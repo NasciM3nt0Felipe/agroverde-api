@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="AgroVerde.API/AgroVerde.API.csproj" />
+  <Project Path="AgroVerde.Application/AgroVerde.Application.csproj" />
+  <Project Path="AgroVerde.Domain/AgroVerde.Domain.csproj" />
+  <Project Path="AgroVerde.Infrastructure/AgroVerde.Infrastructure.csproj" />
+</Solution>
