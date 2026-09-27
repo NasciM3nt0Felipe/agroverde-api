@@ -18,10 +18,24 @@ public class TalhaoService : ITalhaoService
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(request.Nome))
+            {
+                return AppResponse<TalhaoResponse>.Fail(
+                    "Informe o nome do talhão."
+                );
+            }
+
+            if (request.Area <= 0)
+            {
+                return AppResponse<TalhaoResponse>.Fail(
+                    "Informe uma área válida."
+                );
+            }
+
             var talhao = new Talhao
             {
                 PropriedadeId = request.PropriedadeId,
-                Nome = request.Nome,
+                Nome = request.Nome.Trim(),
                 Area = request.Area,
                 TipoSolo = request.TipoSolo,
                 Observacao = request.Observacao,
@@ -141,8 +155,22 @@ public class TalhaoService : ITalhaoService
                 );
             }
 
+            if (string.IsNullOrWhiteSpace(request.Nome))
+            {
+                return AppResponse<TalhaoResponse>.Fail(
+                    "Informe o nome do talhão."
+                );
+            }
+
+            if (request.Area <= 0)
+            {
+                return AppResponse<TalhaoResponse>.Fail(
+                    "Informe uma área válida."
+                );
+            }
+
             talhao.PropriedadeId = request.PropriedadeId;
-            talhao.Nome = request.Nome;
+            talhao.Nome = request.Nome.Trim();
             talhao.Area = request.Area;
             talhao.TipoSolo = request.TipoSolo;
             talhao.Observacao = request.Observacao;

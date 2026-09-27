@@ -33,6 +33,7 @@ public class TalhaoRepository : ITalhaoRepository
         return await _context.Talhoes
             .ToListAsync();
     }
+
     public async Task AtualizarAsync(Talhao talhao)
     {
         _context.Talhoes.Update(talhao);
@@ -49,10 +50,12 @@ public class TalhaoRepository : ITalhaoRepository
             await _context.SaveChangesAsync();
         }
     }
+
     public async Task<List<Talhao>> ListarPorPropriedadeIdAsync(int propriedadeId)
     {
         return await _context.Talhoes
             .Where(t => t.PropriedadeId == propriedadeId)
+            .OrderBy(t => t.Nome)
             .ToListAsync();
     }
 }
