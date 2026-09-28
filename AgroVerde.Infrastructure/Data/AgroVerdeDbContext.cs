@@ -11,9 +11,10 @@ public class AgroVerdeDbContext : DbContext
     {
     }
 
-public DbSet<Talhao> Talhoes => Set<Talhao>();
-public DbSet<Safra> Safras => Set<Safra>();
-    
+    public DbSet<Talhao> Talhoes => Set<Talhao>();
+    public DbSet<Safra> Safras => Set<Safra>();
+    public DbSet<EstoqueItem> EstoqueItens => Set<EstoqueItem>();
+    public DbSet<EstoqueInsumo> EstoqueInsumos => Set<EstoqueInsumo>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

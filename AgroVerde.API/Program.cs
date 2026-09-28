@@ -12,10 +12,12 @@ builder.Services.AddControllers();
 // Serviços da aplicação
 builder.Services.AddScoped<ITalhaoService, TalhaoService>();
 builder.Services.AddScoped<ISafraService, SafraService>();
+builder.Services.AddScoped<IEstoqueService, EstoqueService>();
 
 // Repositórios
 builder.Services.AddScoped<ITalhaoRepository, TalhaoRepository>();
 builder.Services.AddScoped<ISafraRepository, SafraRepository>();
+builder.Services.AddScoped<IEstoqueRepository, EstoqueRepository>();
 
 // Banco de dados SQLite
 builder.Services.AddDbContext<AgroVerdeDbContext>(options =>
