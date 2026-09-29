@@ -20,7 +20,12 @@ builder.Services.AddScoped<ISafraService, SafraService>();
 builder.Services.AddScoped<IEstoqueService, EstoqueService>();
 builder.Services.AddScoped<IUsuarioService, UsuarioService>();
 builder.Services.AddScoped<IPropriedadeService, PropriedadeService>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
+
+// Serviços de Rebanho e Financeiro
+builder.Services.AddScoped<IAnimalService, AnimalService>();
+builder.Services.AddScoped<ITransacaoFinanceiraService, TransacaoFinanceiraService>();
 
 // Repositórios
 builder.Services.AddScoped<ITalhaoRepository, TalhaoRepository>();
@@ -28,6 +33,10 @@ builder.Services.AddScoped<ISafraRepository, SafraRepository>();
 builder.Services.AddScoped<IEstoqueRepository, EstoqueRepository>();
 builder.Services.AddScoped<IUsuarioRepository, UsuarioRepository>();
 builder.Services.AddScoped<IPropriedadeRepository, PropriedadeRepository>();
+
+// Repositórios de Rebanho e Financeiro
+builder.Services.AddScoped<IAnimalRepository, AnimalRepository>();
+builder.Services.AddScoped<ITransacaoFinanceiraRepository, TransacaoFinanceiraRepository>();
 
 // Banco de dados SQLite
 builder.Services.AddDbContext<AgroVerdeDbContext>(options =>
