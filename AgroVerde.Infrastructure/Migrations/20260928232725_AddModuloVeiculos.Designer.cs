@@ -3,6 +3,7 @@ using System;
 using AgroVerde.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AgroVerde.Infrastructure.Migrations
 {
     [DbContext(typeof(AgroVerdeDbContext))]
-    partial class AgroVerdeDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260928232725_AddModuloVeiculos")]
+    partial class AddModuloVeiculos
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.21");
@@ -109,55 +112,6 @@ namespace AgroVerde.Infrastructure.Migrations
                     b.HasIndex("AnimalId");
 
                     b.ToTable("Pesagens");
-                });
-
-            modelBuilder.Entity("AgroVerde.Domain.Entities.Pessoa", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("Ativo")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("CargoOuFuncao")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CpfCnpj")
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("DataCadastro")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Email")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Nome")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Observacoes")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Telefone")
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Tipo")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CpfCnpj")
-                        .IsUnique()
-                        .HasFilter("[CpfCnpj] IS NOT NULL");
-
-                    b.ToTable("Pessoas", (string)null);
                 });
 
             modelBuilder.Entity("AgroVerde.Domain.Entities.RegistroReproducao", b =>

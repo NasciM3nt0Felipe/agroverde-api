@@ -18,6 +18,8 @@ public class AgroVerdeDbContext : DbContext
     public DbSet<ControleSanitario> ControlesSanitarios { get; set; }
     public DbSet<RegistroReproducao> RegistrosReproducao { get; set; }
     public DbSet<TransacaoFinanceira> TransacoesFinanceiras { get; set; }
+    public DbSet<Veiculo> Veiculos { get; set; } = null!;
+    public DbSet<Pessoa> Pessoas { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
