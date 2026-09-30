@@ -27,6 +27,10 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAnimalService, AnimalService>();
 builder.Services.AddScoped<ITransacaoFinanceiraService, TransacaoFinanceiraService>();
 
+// Serviços de Pessoa e Veículo
+builder.Services.AddScoped<IPessoaService, PessoaService>();
+builder.Services.AddScoped<IVeiculoService, VeiculoService>();
+
 // Repositórios
 builder.Services.AddScoped<ITalhaoRepository, TalhaoRepository>();
 builder.Services.AddScoped<ISafraRepository, SafraRepository>();
@@ -37,6 +41,10 @@ builder.Services.AddScoped<IPropriedadeRepository, PropriedadeRepository>();
 // Repositórios de Rebanho e Financeiro
 builder.Services.AddScoped<IAnimalRepository, AnimalRepository>();
 builder.Services.AddScoped<ITransacaoFinanceiraRepository, TransacaoFinanceiraRepository>();
+
+// Repositórios de Pessoa e Veículo
+builder.Services.AddScoped<IPessoaRepository, PessoaRepository>();
+builder.Services.AddScoped<IVeiculoRepository, VeiculoRepository>();
 
 // Banco de dados SQLite
 builder.Services.AddDbContext<AgroVerdeDbContext>(options =>
@@ -110,7 +118,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Authentication SEMPRE antes de Authorization, e os dois antes do MapControllers
+// Authentication SEMPRE antes de Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 

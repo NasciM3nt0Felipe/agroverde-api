@@ -35,6 +35,12 @@ public class AgroVerdeDbContext : DbContext
     // Financeiro
     public DbSet<TransacaoFinanceira> TransacoesFinanceiras => Set<TransacaoFinanceira>();
 
+    // Veículos
+    public DbSet<Veiculo> Veiculos => Set<Veiculo>();
+
+    // Pessoas
+    public DbSet<Pessoa> Pessoas => Set<Pessoa>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
