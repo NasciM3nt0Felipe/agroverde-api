@@ -1,9 +1,13 @@
+
+using System.Security.Claims;
 using AgroVerde.Application.DTOs;
 using AgroVerde.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AgroVerde.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class FinanceiroController : ControllerBase
@@ -15,60 +19,90 @@ public class FinanceiroController : ControllerBase
         _service = service;
     }
 
+    private int UsuarioId =>
+        int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
     [HttpGet]
-    public async Task<IActionResult> ListarTodos([FromQuery] DateTime? inicio, [FromQuery] DateTime? fim)
+    public async Task<IActionResult> ListarTodos(
+        [FromQuery] DateTime? inicio,
+        [FromQuery] DateTime? fim)
     {
+        if (inicio.HasValue != fim.HasValue)
+            return BadRequest(
+                "Informe as duas datas para filtrar o período.");
+
         if (inicio.HasValue && fim.HasValue)
         {
-            var filtrados = await _service.BuscarPorPeriodoAsync(inicio.Value, fim.Value);
-            return Ok(filtrados);
+            var filtrados = await _service.BuscarPorPeriodoAsync(
+                inicio.Value, fim.Value, UsuarioId);
+
+            return filtrados.Success
+                ? Ok(filtrados)
+                : BadRequest(filtrados);
         }
 
-        var result = await _service.ListarTodosAsync();
-        return Ok(result);
+        var resultado = await _service.ListarTodosAsync(UsuarioId);
+        return Ok(resultado);
     }
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> BuscarPorId(int id)
     {
-        var result = await _service.BuscarPorIdAsync(id);
-        if (!result.Success)
-            return NotFound(result);
+        var resultado = await _service.BuscarPorIdAsync(id, UsuarioId);
 
-        return Ok(result);
+        return resultado.Success
+            ? Ok(resultado)
+            : NotFound(resultado);
     }
 
     [HttpGet("resumo")]
     public async Task<IActionResult> ObterResumo()
     {
-        var result = await _service.ObterResumoFinanceiroAsync();
-        return Ok(result);
+        var resultado = await _service.ObterResumoFinanceiroAsync(UsuarioId);
+        return Ok(resultado);
     }
 
     [HttpPost]
-    public async Task<IActionResult> Inserir([FromBody] TransacaoFinanceiraRequest request)
+    public async Task<IActionResult> Inserir(
+        [FromBody] TransacaoFinanceiraRequest request)
     {
-        var result = await _service.InserirAsync(request);
-        return CreatedAtAction(nameof(BuscarPorId), new { id = result.Data!.Id }, result);
+        var resultado = await _service.InserirAsync(request, UsuarioId);
+
+        if (!resultado.Success || resultado.Data is null)
+            return BadRequest(resultado);
+
+        return CreatedAtAction(
+            nameof(BuscarPorId),
+            new { id = resultado.Data.Id },
+            resultado);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Atualizar(int id, [FromBody] TransacaoFinanceiraRequest request)
+    public async Task<IActionResult> Atualizar(
+        int id,
+        [FromBody] TransacaoFinanceiraRequest request)
     {
-        var result = await _service.AtualizarAsync(id, request);
-        if (!result.Success)
-            return NotFound(result);
+        var resultado = await _service.AtualizarAsync(
+            id, request, UsuarioId);
 
-        return Ok(result);
+        if (!resultado.Success)
+        {
+            if (resultado.Message == "Transação não encontrada.")
+                return NotFound(resultado);
+
+            return BadRequest(resultado);
+        }
+
+        return Ok(resultado);
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Excluir(int id)
     {
-        var result = await _service.ExcluirAsync(id);
-        if (!result.Success)
-            return NotFound(result);
+        var resultado = await _service.ExcluirAsync(id, UsuarioId);
 
-        return Ok(result);
+        return resultado.Success
+            ? Ok(resultado)
+            : NotFound(resultado);
     }
 }
