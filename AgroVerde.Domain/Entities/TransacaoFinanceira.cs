@@ -44,4 +44,11 @@ public class TransacaoFinanceira
     public int? AnimalId { get; set; }
 
     public Animal? Animal { get; set; }
+    public string? OrigemTipo { get; set; }
+    public int? OrigemId { get; set; }
+}
+
+public static class OrigemFinanceira
+{
+    public const string Estoque = "Estoque";
 }

@@ -29,4 +29,10 @@ public interface IEstoqueRepository : IRepository<EstoqueItem>
     Task RegistrarConsumoSafraAsync(
 EstoqueItem item,
 EstoqueInsumo consumo);
+
+// Grava o item de estoque e sua despesa financeira
+// na mesma transação.
+Task<EstoqueItem> InserirComLancamentoAsync(
+    EstoqueItem item,
+    TransacaoFinanceira? lancamento);
 }

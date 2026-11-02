@@ -148,4 +148,41 @@ public class EstoqueRepository : IEstoqueRepository
             throw;
         }
     }
+
+    public async Task<EstoqueItem> InserirComLancamentoAsync(
+        EstoqueItem item,
+        TransacaoFinanceira? lancamento)
+    {
+        await using var transaction =
+            await _context.Database.BeginTransactionAsync();
+
+        try
+        {
+            // Primeiro salva o item para obter seu ID.
+            _context.EstoqueItens.Add(item);
+            await _context.SaveChangesAsync();
+
+            if (lancamento != null)
+            {
+                // Vincula a despesa ao item cadastrado.
+                lancamento.OrigemId = item.Id;
+
+                _context.TransacoesFinanceiras.Add(lancamento);
+                await _context.SaveChangesAsync();
+            }
+
+            // Confirma as duas gravações.
+            await transaction.CommitAsync();
+
+            return item;
+        }
+        catch
+        {
+            // Se alguma gravação falhar, desfaz a operação.
+            await transaction.RollbackAsync();
+            _context.ChangeTracker.Clear();
+            throw;
+        }
+    }
+
 }

@@ -449,6 +449,13 @@ namespace AgroVerde.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("OrigemId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OrigemTipo")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("PropriedadeId")
                         .HasColumnType("INTEGER");
 
@@ -468,6 +475,10 @@ namespace AgroVerde.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AnimalId");
+
+                    b.HasIndex("OrigemTipo", "OrigemId")
+                        .IsUnique()
+                        .HasFilter("\"OrigemTipo\" IS NOT NULL AND \"OrigemId\" IS NOT NULL");
 
                     b.ToTable("TransacoesFinanceiras");
                 });

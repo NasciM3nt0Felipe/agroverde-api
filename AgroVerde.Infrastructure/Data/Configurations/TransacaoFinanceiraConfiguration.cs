@@ -22,10 +22,19 @@ public class TransacaoFinanceiraConfiguration : IEntityTypeConfiguration<Transac
             .HasPrecision(18, 2)
             .IsRequired();
 
+            
+
         // Relacionamento opcional com Animal
         builder.HasOne(t => t.Animal)
             .WithMany()
             .HasForeignKey(t => t.AnimalId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        builder.Property(t => t.OrigemTipo)
+.HasMaxLength(50);
+
+        builder.HasIndex(t => new { t.OrigemTipo, t.OrigemId })
+            .IsUnique()
+            .HasFilter("\"OrigemTipo\" IS NOT NULL AND \"OrigemId\" IS NOT NULL");
     }
 }

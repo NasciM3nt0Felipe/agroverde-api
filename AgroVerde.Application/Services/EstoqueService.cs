@@ -1,3 +1,4 @@
+
 using AgroVerde.Application.Common;
 using AgroVerde.Application.DTOs;
 using AgroVerde.Domain.Entities;
@@ -8,10 +9,17 @@ namespace AgroVerde.Application.Services;
 public class EstoqueService : IEstoqueService
 {
     private readonly IEstoqueRepository _estoqueRepository;
+    private readonly ISafraRepository _safraRepository;
+    private readonly ITalhaoRepository _talhaoRepository;
 
-    public EstoqueService(IEstoqueRepository estoqueRepository)
+    public EstoqueService(
+        IEstoqueRepository estoqueRepository,
+        ISafraRepository safraRepository,
+        ITalhaoRepository talhaoRepository)
     {
         _estoqueRepository = estoqueRepository;
+        _safraRepository = safraRepository;
+        _talhaoRepository = talhaoRepository;
     }
 
     public async Task<AppResponse<EstoqueItemResponse>> CriarAsync(
@@ -57,7 +65,12 @@ public class EstoqueService : IEstoqueService
                 Observacao = request.Observacao?.Trim()
             };
 
-            var itemCriado = await _estoqueRepository.InserirAsync(item);
+            // Cria a despesa da compra, quando houver valor.
+            var despesa = MontarDespesaDeCompra(item);
+
+            // Grava estoque e financeiro na mesma transação.
+            var itemCriado = await _estoqueRepository
+                .InserirComLancamentoAsync(item, despesa);
 
             return AppResponse<EstoqueItemResponse>.Ok(
                 "Item de estoque cadastrado com sucesso.",
@@ -71,7 +84,8 @@ public class EstoqueService : IEstoqueService
         }
     }
 
-    public async Task<AppResponse<EstoqueItemResponse>> BuscarPorIdAsync(int id)
+    public async Task<AppResponse<EstoqueItemResponse>> BuscarPorIdAsync(
+        int id)
     {
         try
         {
@@ -93,8 +107,8 @@ public class EstoqueService : IEstoqueService
         }
     }
 
-    public async Task<AppResponse<List<EstoqueItemResponse>>> ListarPorPropriedadeIdAsync(
-        int propriedadeId)
+    public async Task<AppResponse<List<EstoqueItemResponse>>>
+        ListarPorPropriedadeIdAsync(int propriedadeId)
     {
         try
         {
@@ -117,8 +131,8 @@ public class EstoqueService : IEstoqueService
         }
     }
 
-    public async Task<AppResponse<List<EstoqueItemResponse>>> ListarVacinasDisponiveisAsync(
-        int propriedadeId)
+    public async Task<AppResponse<List<EstoqueItemResponse>>>
+        ListarVacinasDisponiveisAsync(int propriedadeId)
     {
         try
         {
@@ -177,7 +191,15 @@ public class EstoqueService : IEstoqueService
                 return AppResponse<EstoqueItemResponse>.Fail(
                     "O estoque mínimo não pode ser negativo.");
 
-            item.PropriedadeId = request.PropriedadeId;
+            // Não permite transferir o item para outra propriedade.
+            // PropriedadeId igual a zero mantém a propriedade atual.
+            if (request.PropriedadeId > 0 &&
+                request.PropriedadeId != item.PropriedadeId)
+            {
+                return AppResponse<EstoqueItemResponse>.Fail(
+                    "Não é permitido alterar a propriedade de um item de estoque.");
+            }
+
             item.Nome = request.Nome.Trim();
             item.Categoria = request.Categoria.Trim();
             item.QuantidadeInicial = request.QuantidadeInicial;
@@ -188,6 +210,7 @@ public class EstoqueService : IEstoqueService
             item.Fornecedor = request.Fornecedor?.Trim();
             item.Observacao = request.Observacao?.Trim();
 
+            // Edição não altera o lançamento financeiro histórico.
             await _estoqueRepository.AtualizarAsync(item);
 
             return AppResponse<EstoqueItemResponse>.Ok(
@@ -202,7 +225,8 @@ public class EstoqueService : IEstoqueService
         }
     }
 
-    public async Task<AppResponse<EstoqueItemResponse>> ExcluirAsync(int id)
+    public async Task<AppResponse<EstoqueItemResponse>> ExcluirAsync(
+        int id)
     {
         try
         {
@@ -212,6 +236,7 @@ public class EstoqueService : IEstoqueService
                 return AppResponse<EstoqueItemResponse>.Fail(
                     "Item de estoque não encontrado.");
 
+            // A despesa da compra permanece no histórico financeiro.
             await _estoqueRepository.ExcluirAsync(id);
 
             return AppResponse<EstoqueItemResponse>.Ok(
@@ -236,7 +261,8 @@ public class EstoqueService : IEstoqueService
                 return AppResponse<EstoqueItemResponse>.Fail(
                     "A quantidade consumida deve ser maior que zero.");
 
-            var item = await _estoqueRepository.BuscarPorIdAsync(estoqueItemId);
+            var item = await _estoqueRepository
+                .BuscarPorIdAsync(estoqueItemId);
 
             if (item == null)
                 return AppResponse<EstoqueItemResponse>.Fail(
@@ -263,8 +289,8 @@ public class EstoqueService : IEstoqueService
         }
     }
 
-    public async Task<AppResponse<EstoqueItemResponse>> RegistrarConsumoSafraAsync(
-        ConsumoEstoqueRequest request)
+    public async Task<AppResponse<EstoqueItemResponse>>
+        RegistrarConsumoSafraAsync(ConsumoEstoqueRequest request)
     {
         try
         {
@@ -279,6 +305,27 @@ public class EstoqueService : IEstoqueService
                 return AppResponse<EstoqueItemResponse>.Fail(
                     "Item de estoque não encontrado.");
 
+            // Verifica se a safra existe.
+            var safra = await _safraRepository
+                .BuscarPorIdAsync(request.SafraId);
+
+            if (safra == null)
+                return AppResponse<EstoqueItemResponse>.Fail(
+                    "Safra não encontrada.");
+
+            // Descobre a propriedade à qual a safra pertence.
+            var talhao = await _talhaoRepository
+                .BuscarPorIdAsync(safra.TalhaoId);
+
+            if (talhao == null)
+                return AppResponse<EstoqueItemResponse>.Fail(
+                    "Talhão da safra não encontrado.");
+
+            // Impede consumir insumos de outra propriedade.
+            if (talhao.PropriedadeId != item.PropriedadeId)
+                return AppResponse<EstoqueItemResponse>.Fail(
+                    "A safra e o item de estoque pertencem a propriedades diferentes.");
+
             if (item.QuantidadeAtual < request.Quantidade)
                 return AppResponse<EstoqueItemResponse>.Fail(
                     $"Estoque insuficiente para {item.Nome}. " +
@@ -291,11 +338,13 @@ public class EstoqueService : IEstoqueService
                 SafraId = request.SafraId,
                 EstoqueItemId = item.Id,
                 QuantidadeUtilizada = request.Quantidade,
-                ValorTotal = request.Quantidade * item.PrecoMedioUnitario,
+                ValorTotal = request.Quantidade *
+                             item.PrecoMedioUnitario,
                 DataMovimentacao = DateTime.Now.ToString("o"),
                 Observacao = request.Observacao?.Trim()
             };
 
+            // O consumo reduz o saldo, mas não gera outra despesa.
             await _estoqueRepository.RegistrarConsumoSafraAsync(
                 item,
                 consumo);
@@ -312,7 +361,43 @@ public class EstoqueService : IEstoqueService
         }
     }
 
-    private static EstoqueItemResponse MapearParaResponse(EstoqueItem item)
+    // Gera uma despesa somente quando a compra possui valor positivo.
+    private static TransacaoFinanceira? MontarDespesaDeCompra(
+        EstoqueItem item)
+    {
+        var valor = Math.Round(
+            (decimal)item.QuantidadeInicial *
+            (decimal)item.PrecoMedioUnitario,
+            2,
+            MidpointRounding.AwayFromZero);
+
+        if (valor <= 0)
+            return null;
+
+        var descricao = $"Compra de {item.Nome}";
+
+        if (descricao.Length > 200)
+            descricao = descricao.Substring(0, 200);
+
+        var hoje = DateTime.Today;
+
+        return new TransacaoFinanceira
+        {
+            PropriedadeId = item.PropriedadeId,
+            Descricao = descricao,
+            Valor = valor,
+            Tipo = TipoTransacao.Despesa,
+            Categoria = "Estoque",
+            Data = hoje,
+            DataVencimento = hoje,
+            DataPagamento = hoje,
+            Status = StatusTransacao.Pago,
+            OrigemTipo = OrigemFinanceira.Estoque
+        };
+    }
+
+    private static EstoqueItemResponse MapearParaResponse(
+        EstoqueItem item)
     {
         return new EstoqueItemResponse
         {
