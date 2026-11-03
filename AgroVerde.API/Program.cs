@@ -1,3 +1,4 @@
+
 using System.Text;
 using AgroVerde.API.Services;
 using AgroVerde.Application.Services;
@@ -27,9 +28,10 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAnimalService, AnimalService>();
 builder.Services.AddScoped<ITransacaoFinanceiraService, TransacaoFinanceiraService>();
 
-// Serviços de Pessoa e Veículo
+// Serviços de Pessoa, Veículo e Funcionário
 builder.Services.AddScoped<IPessoaService, PessoaService>();
 builder.Services.AddScoped<IVeiculoService, VeiculoService>();
+builder.Services.AddScoped<IFuncionarioService, FuncionarioService>();
 
 // Repositórios
 builder.Services.AddScoped<ITalhaoRepository, TalhaoRepository>();
@@ -42,9 +44,10 @@ builder.Services.AddScoped<IPropriedadeRepository, PropriedadeRepository>();
 builder.Services.AddScoped<IAnimalRepository, AnimalRepository>();
 builder.Services.AddScoped<ITransacaoFinanceiraRepository, TransacaoFinanceiraRepository>();
 
-// Repositórios de Pessoa e Veículo
+// Repositórios de Pessoa, Veículo e Funcionário
 builder.Services.AddScoped<IPessoaRepository, PessoaRepository>();
 builder.Services.AddScoped<IVeiculoRepository, VeiculoRepository>();
+builder.Services.AddScoped<IFuncionarioRepository, FuncionarioRepository>();
 
 // Banco de dados SQLite
 builder.Services.AddDbContext<AgroVerdeDbContext>(options =>

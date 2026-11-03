@@ -21,14 +21,18 @@ namespace AgroVerde.Infrastructure.Repositories
         {
             // Linhas de perfil (UsuarioId preenchido) não aparecem nas listagens operacionais.
             return await _context.Pessoas.AsNoTracking()
-                .Where(p => p.UsuarioId == null).ToListAsync();
+                .Where(p => p.UsuarioId == null
+                    && !_context.Funcionarios.Any(f => f.PessoaId == p.Id))
+                .ToListAsync();
         }
 
         public async Task<Pessoa?> GetByIdAsync(int id)
         {
             // Perfis não são acessíveis por id pelos endpoints de Pessoa (somente por /api/Perfil).
+            // Pessoas que são funcionários só são acessíveis por /api/Funcionario (com checagem de dono).
             return await _context.Pessoas
-                .FirstOrDefaultAsync(p => p.Id == id && p.UsuarioId == null);
+                .FirstOrDefaultAsync(p => p.Id == id && p.UsuarioId == null
+                    && !_context.Funcionarios.Any(f => f.PessoaId == p.Id));
         }
 
         public async Task<Pessoa?> ObterPorDocumentoAsync(string cpfCnpj)
@@ -46,13 +50,17 @@ namespace AgroVerde.Infrastructure.Repositories
         public async Task<IEnumerable<Pessoa>> ObterPorTipoAsync(TipoPessoa tipo)
         {
             return await _context.Pessoas.AsNoTracking()
-                .Where(p => p.Tipo == tipo && p.UsuarioId == null).ToListAsync();
+                .Where(p => p.Tipo == tipo && p.UsuarioId == null
+                    && !_context.Funcionarios.Any(f => f.PessoaId == p.Id))
+                .ToListAsync();
         }
 
         public async Task<IEnumerable<Pessoa>> ObterAtivosAsync()
         {
             return await _context.Pessoas.AsNoTracking()
-                .Where(p => p.Ativo && p.UsuarioId == null).ToListAsync();
+                .Where(p => p.Ativo && p.UsuarioId == null
+                    && !_context.Funcionarios.Any(f => f.PessoaId == p.Id))
+                .ToListAsync();
         }
 
         public async Task<Pessoa?> ObterPerfilPorUsuarioIdAsync(int usuarioId)

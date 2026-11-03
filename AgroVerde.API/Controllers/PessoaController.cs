@@ -5,11 +5,13 @@ using AgroVerde.Application.Common;
 using AgroVerde.Application.DTOs;
 using AgroVerde.Application.Services;
 using AgroVerde.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AgroVerde.API.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     [Produces("application/json")]

@@ -40,6 +40,8 @@ public class AgroVerdeDbContext : DbContext
 
     // Pessoas
     public DbSet<Pessoa> Pessoas => Set<Pessoa>();
+    // Funcionários
+    public DbSet<Funcionario> Funcionarios => Set<Funcionario>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,4 +51,5 @@ public class AgroVerdeDbContext : DbContext
             typeof(AgroVerdeDbContext).Assembly
         );
     }
+
 }

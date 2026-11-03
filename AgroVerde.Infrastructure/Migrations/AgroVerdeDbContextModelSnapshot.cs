@@ -186,6 +186,61 @@ namespace AgroVerde.Infrastructure.Migrations
                     b.ToTable("estoque_item", (string)null);
                 });
 
+            modelBuilder.Entity("AgroVerde.Domain.Entities.Funcionario", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Cargo")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("cargo");
+
+                    b.Property<DateTime?>("DataContratacao")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("data_contratacao");
+
+                    b.Property<DateTime?>("DataDesligamento")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("data_desligamento");
+
+                    b.Property<string>("Observacao")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("observacao");
+
+                    b.Property<int>("PessoaId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("pessoa_id");
+
+                    b.Property<int>("PropriedadeId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("propriedade_id");
+
+                    b.Property<decimal?>("Salario")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("salario");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropriedadeId");
+
+                    b.HasIndex("PessoaId", "PropriedadeId")
+                        .IsUnique();
+
+                    b.ToTable("funcionario", (string)null);
+                });
+
             modelBuilder.Entity("AgroVerde.Domain.Entities.Pesagem", b =>
                 {
                     b.Property<int>("Id")
@@ -648,6 +703,23 @@ namespace AgroVerde.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Animal");
+                });
+
+            modelBuilder.Entity("AgroVerde.Domain.Entities.Funcionario", b =>
+                {
+                    b.HasOne("AgroVerde.Domain.Entities.Pessoa", "Pessoa")
+                        .WithMany()
+                        .HasForeignKey("PessoaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AgroVerde.Domain.Entities.Propriedade", null)
+                        .WithMany()
+                        .HasForeignKey("PropriedadeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Pessoa");
                 });
 
             modelBuilder.Entity("AgroVerde.Domain.Entities.Pesagem", b =>
