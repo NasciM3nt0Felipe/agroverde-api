@@ -8,10 +8,20 @@ namespace AgroVerde.Application.Services;
 public class SafraService : ISafraService
 {
     private readonly ISafraRepository _safraRepository;
+    private readonly ITalhaoRepository _talhaoRepository;
+    private readonly IEstoqueRepository _estoqueRepository;
+    private readonly ITransacaoFinanceiraRepository _financeiroRepository;
 
-    public SafraService(ISafraRepository safraRepository)
+    public SafraService(
+        ISafraRepository safraRepository,
+        ITalhaoRepository talhaoRepository,
+        IEstoqueRepository estoqueRepository,
+        ITransacaoFinanceiraRepository financeiroRepository)
     {
         _safraRepository = safraRepository;
+        _talhaoRepository = talhaoRepository;
+        _estoqueRepository = estoqueRepository;
+        _financeiroRepository = financeiroRepository;
     }
     public async Task<AppResponse<SafraResponse>> CriarAsync(SafraRequest request)
     {
@@ -35,6 +45,13 @@ public class SafraService : ISafraService
             {
                 return AppResponse<SafraResponse>.Fail(
                     "Informe a data de plantio."
+                );
+            }
+
+            if (await _talhaoRepository.BuscarPorIdAsync(request.TalhaoId) == null)
+            {
+                return AppResponse<SafraResponse>.Fail(
+                    "Talhão não encontrado."
                 );
             }
 
@@ -210,6 +227,13 @@ public class SafraService : ISafraService
                 );
             }
 
+            if (await _talhaoRepository.BuscarPorIdAsync(request.TalhaoId) == null)
+            {
+                return AppResponse<SafraResponse>.Fail(
+                    "Talhão não encontrado."
+                );
+            }
+
             if (request.Status == "Planejada" || request.Status == "Em andamento")
             {
                 var existeSafraAtiva =
@@ -280,6 +304,30 @@ public class SafraService : ISafraService
                 return AppResponse<SafraResponse>.Fail(
                     "Safra não encontrada."
                 );
+            }
+
+            if (await _estoqueRepository.ExisteConsumoPorSafraAsync(id))
+            {
+                return AppResponse<SafraResponse>.Fail(
+                    $"Não é possível excluir a safra \"{safra.Nome}\" porque ela possui "
+                    + "consumo de insumos registrado."
+                );
+            }
+
+            var talhao = await _talhaoRepository.BuscarPorIdAsync(safra.TalhaoId);
+
+            if (talhao != null)
+            {
+                var lancamentos = await _financeiroRepository
+                    .ListarPorPropriedadeIdAsync(talhao.PropriedadeId);
+
+                if (lancamentos.Any(l => l.SafraId == id))
+                {
+                    return AppResponse<SafraResponse>.Fail(
+                        $"Não é possível excluir a safra \"{safra.Nome}\" porque ela possui "
+                        + "lançamentos financeiros vinculados."
+                    );
+                }
             }
 
             await _safraRepository.ExcluirAsync(id);
