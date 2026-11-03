@@ -63,11 +63,17 @@ public class DashboardService : IDashboardService
                 await _financeiroRepository.ListarPorPropriedadeIdAsync(
                     propriedadeId);
 
-            var receitas = transacoes
+            // Somente lançamentos pagos compõem o saldo:
+            // pendentes e cancelados não alteram receitas, despesas ou saldo.
+            var pagas = transacoes
+                .Where(t => t.Status == StatusTransacao.Pago)
+                .ToList();
+
+            var receitas = pagas
                 .Where(t => t.Tipo == TipoTransacao.Receita)
                 .Sum(t => t.Valor);
 
-            var despesas = transacoes
+            var despesas = pagas
                 .Where(t => t.Tipo == TipoTransacao.Despesa)
                 .Sum(t => t.Valor);
 

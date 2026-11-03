@@ -50,5 +50,45 @@ public class TransacaoFinanceira
 
 public static class OrigemFinanceira
 {
+    // Origem gerada pela própria API (ex.: compra registrada em /api/Estoque).
+    // O lançamento é mantido pelo módulo de origem: não pode ser alterado
+    // nem excluído pelo Financeiro.
     public const string Estoque = "Estoque";
+
+    // Origens informadas pelo app para módulos que ainda gravam localmente
+    // (SQLite). O lançamento não pode ser editado pelo Financeiro (os valores
+    // vêm do módulo de origem), mas pode ser excluído para corrigir enganos.
+    public const string CompraEstoque = "CompraEstoque";
+    public const string FolhaPagamento = "FolhaPagamento";
+    public const string VendaGraos = "VendaGraos";
+    public const string Abastecimento = "Abastecimento";
+    public const string ManutencaoVeiculo = "ManutencaoVeiculo";
+    public const string VendaVeiculo = "VendaVeiculo";
+
+    private static readonly string[] InformadasPeloApp =
+    [
+        CompraEstoque,
+        FolhaPagamento,
+        VendaGraos,
+        Abastecimento,
+        ManutencaoVeiculo,
+        VendaVeiculo
+    ];
+
+    // Retorna o nome canônico de uma origem aceita do app, ou null.
+    public static string? NormalizarOrigemDoApp(string? origem)
+    {
+        if (string.IsNullOrWhiteSpace(origem))
+            return null;
+
+        return InformadasPeloApp.FirstOrDefault(o =>
+            string.Equals(o, origem.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool PermiteEditar(TransacaoFinanceira t) =>
+        string.IsNullOrWhiteSpace(t.OrigemTipo);
+
+    public static bool PermiteExcluir(TransacaoFinanceira t) =>
+        string.IsNullOrWhiteSpace(t.OrigemTipo) ||
+        NormalizarOrigemDoApp(t.OrigemTipo) is not null;
 }

@@ -14,7 +14,10 @@ public record TransacaoFinanceiraRequest(
     int? AnimalId,
     int PropriedadeId = 0,
     DateTime? Data = null,
-    int? SafraId = null
+    int? SafraId = null,
+    // Somente na inclusão: módulo do app que gerou o lançamento
+    // (ver OrigemFinanceira). Ignorado na atualização.
+    string? OrigemTipo = null
 );
 
 public record TransacaoFinanceiraResponse(
@@ -29,7 +32,12 @@ public record TransacaoFinanceiraResponse(
     int? AnimalId,
     int PropriedadeId,
     DateTime Data,
-    int? SafraId
+    int? SafraId,
+    // null = lançamento manual.
+    string? OrigemTipo = null,
+    // Ações permitidas pela API, para a interface não oferecer as demais.
+    bool PermiteEditar = true,
+    bool PermiteExcluir = true
 );
 
 public record ResumoFinanceiroResponse(

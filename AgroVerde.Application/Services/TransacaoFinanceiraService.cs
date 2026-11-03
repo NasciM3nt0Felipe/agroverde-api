@@ -10,13 +10,22 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
 {
     private readonly ITransacaoFinanceiraRepository _repository;
     private readonly IPropriedadeService _propriedadeService;
+    private readonly ISafraRepository _safraRepository;
+    private readonly ITalhaoRepository _talhaoRepository;
+    private readonly IAnimalRepository _animalRepository;
 
     public TransacaoFinanceiraService(
         ITransacaoFinanceiraRepository repository,
-        IPropriedadeService propriedadeService)
+        IPropriedadeService propriedadeService,
+        ISafraRepository safraRepository,
+        ITalhaoRepository talhaoRepository,
+        IAnimalRepository animalRepository)
     {
         _repository = repository;
         _propriedadeService = propriedadeService;
+        _safraRepository = safraRepository;
+        _talhaoRepository = talhaoRepository;
+        _animalRepository = animalRepository;
     }
 
     private async Task<bool> PropriedadeAutorizadaAsync(
@@ -45,9 +54,21 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
             : null;
     }
 
-    private async Task<List<TransacaoFinanceira>> ListarAutorizadasAsync(
-        int usuarioId)
+    // Retorna null quando a propriedade filtrada não pertence ao usuário.
+    private async Task<List<TransacaoFinanceira>?> ListarAutorizadasAsync(
+        int usuarioId, int? propriedadeId = null)
     {
+        if (propriedadeId.HasValue)
+        {
+            if (!await PropriedadeAutorizadaAsync(
+                    propriedadeId.Value, usuarioId))
+                return null;
+
+            return (await _repository
+                    .ListarPorPropriedadeIdAsync(propriedadeId.Value))
+                .ToList();
+        }
+
         var resultado = await _propriedadeService
             .ListarPorUsuarioIdAsync(usuarioId);
 
@@ -65,13 +86,27 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
             transacoes.AddRange(registros);
         }
 
-        return transacoes;
+        return transacoes
+            .OrderByDescending(t => t.Id)
+            .ToList();
     }
 
+    private static AppResponse<T> PropriedadeNaoEncontrada<T>() =>
+        new(
+            false,
+            ITransacaoFinanceiraService.MensagemPropriedadeNaoEncontrada,
+            default,
+            [ITransacaoFinanceiraService.MensagemPropriedadeNaoEncontrada]);
+
     public async Task<AppResponse<IEnumerable<TransacaoFinanceiraResponse>>>
-        ListarTodosAsync(int usuarioId)
+        ListarTodosAsync(int usuarioId, int? propriedadeId = null)
     {
-        var transacoes = await ListarAutorizadasAsync(usuarioId);
+        var transacoes = await ListarAutorizadasAsync(
+            usuarioId, propriedadeId);
+
+        if (transacoes is null)
+            return PropriedadeNaoEncontrada<
+                IEnumerable<TransacaoFinanceiraResponse>>();
 
         return new(
             true,
@@ -82,7 +117,10 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
 
     public async Task<AppResponse<IEnumerable<TransacaoFinanceiraResponse>>>
         BuscarPorPeriodoAsync(
-            DateTime inicio, DateTime fim, int usuarioId)
+            DateTime inicio,
+            DateTime fim,
+            int usuarioId,
+            int? propriedadeId = null)
     {
         if (inicio > fim)
             return new(
@@ -91,7 +129,12 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
                 null,
                 ["A data inicial deve ser anterior ou igual à final."]);
 
-        var transacoes = await ListarAutorizadasAsync(usuarioId);
+        var transacoes = await ListarAutorizadasAsync(
+            usuarioId, propriedadeId);
+
+        if (transacoes is null)
+            return PropriedadeNaoEncontrada<
+                IEnumerable<TransacaoFinanceiraResponse>>();
 
         var filtradas = transacoes
             .Where(t => t.DataVencimento >= inicio &&
@@ -114,9 +157,9 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
         if (transacao is null)
             return new(
                 false,
-                "Transação não encontrada.",
+                ITransacaoFinanceiraService.MensagemNaoEncontrada,
                 null,
-                ["Transação não encontrada."]);
+                [ITransacaoFinanceiraService.MensagemNaoEncontrada]);
 
         return new(
             true,
@@ -133,21 +176,37 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
         if (request.PropriedadeId <= 0)
             erros.Add("Informe uma propriedade válida.");
 
+        var status = request.Status ?? StatusTransacao.Pago;
+
+        // Só lançamentos pagos possuem data de pagamento.
+        if (status != StatusTransacao.Pago && request.DataPagamento.HasValue)
+            erros.Add(
+                "A data de pagamento só pode ser informada para lançamentos pagos.");
+
+        // Origem é opcional; quando informada, precisa ser uma origem do app.
+        // A origem "Estoque" é reservada aos lançamentos gerados pela API.
+        var origem = OrigemFinanceira.NormalizarOrigemDoApp(request.OrigemTipo);
+
+        if (!string.IsNullOrWhiteSpace(request.OrigemTipo) && origem is null)
+            erros.Add("Origem do lançamento inválida.");
+
         if (erros.Count > 0)
             return new(false, "Dados inválidos.", null, erros);
 
         if (!await PropriedadeAutorizadaAsync(
                 request.PropriedadeId, usuarioId))
-            return new(
-                false,
-                "Propriedade não encontrada.",
-                null,
-                ["Propriedade não encontrada."]);
+            return PropriedadeNaoEncontrada<TransacaoFinanceiraResponse>();
+
+        // Safra e animal precisam pertencer à mesma propriedade.
+        erros.AddRange(await ValidarVinculosAsync(
+            request.PropriedadeId, request.SafraId, request.AnimalId));
+
+        if (erros.Count > 0)
+            return new(false, "Dados inválidos.", null, erros);
 
         var hoje = DateTime.Now.Date;
         var data = (request.Data ?? request.DataVencimento ?? hoje).Date;
         var vencimento = (request.DataVencimento ?? request.Data ?? hoje).Date;
-        var status = request.Status ?? StatusTransacao.Pago;
 
         var transacao = new TransacaoFinanceira
         {
@@ -160,11 +219,15 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
                 : request.Categoria.Trim(),
             Data = data,
             DataVencimento = vencimento,
-            DataPagamento = request.DataPagamento?.Date
-                ?? (status == StatusTransacao.Pago ? data : null),
+            DataPagamento = status == StatusTransacao.Pago
+                ? (request.DataPagamento?.Date ?? data)
+                : null,
             Status = status,
             SafraId = request.SafraId,
-            AnimalId = request.AnimalId
+            AnimalId = request.AnimalId,
+            // OrigemId fica nulo: o ID local do app não é único entre
+            // usuários e colidiria no índice único (OrigemTipo, OrigemId).
+            OrigemTipo = origem
         };
 
         var criada = await _repository.InserirAsync(transacao);
@@ -184,9 +247,17 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
         if (transacao is null)
             return new(
                 false,
-                "Transação não encontrada.",
+                ITransacaoFinanceiraService.MensagemNaoEncontrada,
                 false,
-                ["Transação não encontrada."]);
+                [ITransacaoFinanceiraService.MensagemNaoEncontrada]);
+
+        // Lançamentos automáticos têm os valores definidos pelo módulo
+        // de origem e não podem ser editados pelo Financeiro.
+        if (!OrigemFinanceira.PermiteEditar(transacao))
+        {
+            var mensagem = MensagemNaoEditavel(transacao.OrigemTipo);
+            return new(false, mensagem, false, [mensagem]);
+        }
 
         var erros = Validar(request);
 
@@ -197,6 +268,28 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
             request.PropriedadeId != transacao.PropriedadeId)
             erros.Add(
                 "Não é permitido alterar a propriedade de um lançamento.");
+
+        var statusFinal = request.Status ?? transacao.Status;
+
+        if (statusFinal != StatusTransacao.Pago &&
+            request.DataPagamento.HasValue)
+            erros.Add(
+                "A data de pagamento só pode ser informada para lançamentos pagos.");
+
+        if (erros.Count > 0)
+            return new(false, "Dados inválidos.", false, erros);
+
+        // Valida apenas os vínculos que estão sendo alterados.
+        erros.AddRange(await ValidarVinculosAsync(
+            transacao.PropriedadeId,
+            request.SafraId.HasValue &&
+                request.SafraId != transacao.SafraId
+                ? request.SafraId
+                : null,
+            request.AnimalId.HasValue &&
+                request.AnimalId != transacao.AnimalId
+                ? request.AnimalId
+                : null));
 
         if (erros.Count > 0)
             return new(false, "Dados inválidos.", false, erros);
@@ -222,15 +315,19 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
         if (request.AnimalId.HasValue)
             transacao.AnimalId = request.AnimalId;
 
-        if (request.Status.HasValue)
-            transacao.Status = request.Status.Value;
+        transacao.Status = statusFinal;
 
-        if (request.DataPagamento.HasValue)
+        // Mantém DataPagamento coerente com o status.
+        if (transacao.Status != StatusTransacao.Pago)
+        {
+            transacao.DataPagamento = null;
+        }
+        else if (request.DataPagamento.HasValue)
         {
             transacao.DataPagamento = request.DataPagamento.Value.Date;
         }
-        else if (statusAnterior != StatusTransacao.Pago &&
-                 transacao.Status == StatusTransacao.Pago)
+        else if (statusAnterior != StatusTransacao.Pago ||
+                 transacao.DataPagamento is null)
         {
             transacao.DataPagamento = DateTime.Now.Date;
         }
@@ -251,9 +348,17 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
         if (transacao is null)
             return new(
                 false,
-                "Transação não encontrada.",
+                ITransacaoFinanceiraService.MensagemNaoEncontrada,
                 false,
-                ["Transação não encontrada."]);
+                [ITransacaoFinanceiraService.MensagemNaoEncontrada]);
+
+        // Lançamentos gerados pela API (ex.: compra em /api/Estoque)
+        // pertencem ao módulo de origem e não podem ser excluídos aqui.
+        if (!OrigemFinanceira.PermiteExcluir(transacao))
+        {
+            var mensagem = MensagemNaoExcluivel(transacao.OrigemTipo);
+            return new(false, mensagem, false, [mensagem]);
+        }
 
         await _repository.ExcluirAsync(id);
 
@@ -265,10 +370,16 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
     }
 
     public async Task<AppResponse<ResumoFinanceiroResponse>>
-        ObterResumoFinanceiroAsync(int usuarioId)
+        ObterResumoFinanceiroAsync(int usuarioId, int? propriedadeId = null)
     {
-        var transacoes = await ListarAutorizadasAsync(usuarioId);
+        var transacoes = await ListarAutorizadasAsync(
+            usuarioId, propriedadeId);
 
+        if (transacoes is null)
+            return PropriedadeNaoEncontrada<ResumoFinanceiroResponse>();
+
+        // Somente lançamentos pagos compõem o saldo disponível:
+        // pendentes e cancelados não aumentam nem reduzem o saldo.
         var pagas = transacoes
             .Where(t => t.Status == StatusTransacao.Pago)
             .ToList();
@@ -291,6 +402,45 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
             []);
     }
 
+    // Garante que safra e animal pertencem à propriedade do lançamento.
+    private async Task<List<string>> ValidarVinculosAsync(
+        int propriedadeId, int? safraId, int? animalId)
+    {
+        var erros = new List<string>();
+
+        if (safraId is > 0)
+        {
+            var safra = await _safraRepository
+                .BuscarPorIdAsync(safraId.Value);
+
+            var talhao = safra is null
+                ? null
+                : await _talhaoRepository.BuscarPorIdAsync(safra.TalhaoId);
+
+            if (talhao is null || talhao.PropriedadeId != propriedadeId)
+                erros.Add("Safra não encontrada nesta propriedade.");
+        }
+
+        if (animalId is > 0)
+        {
+            var animal = await _animalRepository
+                .BuscarPorIdAsync(animalId.Value);
+
+            if (animal is null || animal.PropriedadeId != propriedadeId)
+                erros.Add("Animal não encontrado nesta propriedade.");
+        }
+
+        return erros;
+    }
+
+    private static string MensagemNaoEditavel(string? origem) =>
+        $"Lançamento automático ({origem}): os valores são definidos pelo " +
+        "módulo de origem e não podem ser editados pelo Financeiro.";
+
+    private static string MensagemNaoExcluivel(string? origem) =>
+        $"Lançamento automático ({origem}): pertence ao módulo de origem " +
+        "e não pode ser excluído pelo Financeiro.";
+
     private static List<string> Validar(
         TransacaoFinanceiraRequest request)
     {
@@ -298,6 +448,12 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
 
         if (string.IsNullOrWhiteSpace(request.Descricao))
             erros.Add("A descrição é obrigatória.");
+        else if (request.Descricao.Trim().Length > 200)
+            erros.Add("A descrição deve ter no máximo 200 caracteres.");
+
+        if (request.Categoria is { Length: > 0 } &&
+            request.Categoria.Trim().Length > 100)
+            erros.Add("A categoria deve ter no máximo 100 caracteres.");
 
         if (request.Valor <= 0)
             erros.Add("O valor deve ser maior que zero.");
@@ -332,6 +488,9 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
             t.AnimalId,
             t.PropriedadeId,
             t.Data,
-            t.SafraId
+            t.SafraId,
+            t.OrigemTipo,
+            OrigemFinanceira.PermiteEditar(t),
+            OrigemFinanceira.PermiteExcluir(t)
         );
 }
