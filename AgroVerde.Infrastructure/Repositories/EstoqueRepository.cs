@@ -89,6 +89,15 @@ public class EstoqueRepository : IEstoqueRepository
 
         return consumo;
     }
+    public async Task<List<EstoqueInsumo>> ListarConsumosPorSafraIdAsync(int safraId)
+    {
+        return await _context.EstoqueInsumos
+            .AsNoTracking()
+            .Where(e => e.SafraId == safraId)
+            .OrderByDescending(e => e.Id)
+            .ToListAsync();
+    }
+
     public async Task<bool> ExisteConsumoPorSafraAsync(int safraId)
     {
         return await _context.EstoqueInsumos

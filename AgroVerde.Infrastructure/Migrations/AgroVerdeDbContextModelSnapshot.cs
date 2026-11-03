@@ -17,6 +17,39 @@ namespace AgroVerde.Infrastructure.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.21");
 
+            modelBuilder.Entity("AgroVerde.Domain.Entities.AbastecimentoVeiculo", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Data")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("HorimetroOdometro")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("Litros")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Observacao")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ValorTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("VeiculoId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VeiculoId");
+
+                    b.ToTable("AbastecimentosVeiculo", (string)null);
+                });
+
             modelBuilder.Entity("AgroVerde.Domain.Entities.Animal", b =>
                 {
                     b.Property<int>("Id")
@@ -239,6 +272,45 @@ namespace AgroVerde.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("funcionario", (string)null);
+                });
+
+            modelBuilder.Entity("AgroVerde.Domain.Entities.ManutencaoVeiculo", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Data")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Descricao")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("HorimetroOdometro")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Observacao")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Valor")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("VeiculoId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VeiculoId");
+
+                    b.ToTable("ManutencoesVeiculo", (string)null);
                 });
 
             modelBuilder.Entity("AgroVerde.Domain.Entities.Pesagem", b =>
@@ -656,8 +728,15 @@ namespace AgroVerde.Infrastructure.Migrations
                     b.Property<DateTime>("DataAquisicao")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("DataVenda")
+                        .HasColumnType("TEXT");
+
                     b.Property<double>("HorimetroAtual")
                         .HasColumnType("REAL");
+
+                    b.Property<string>("Marca")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Modelo")
                         .HasMaxLength(100)
@@ -676,6 +755,9 @@ namespace AgroVerde.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("PropriedadeId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<double>("QuilometragemAtual")
                         .HasColumnType("REAL");
 
@@ -685,13 +767,29 @@ namespace AgroVerde.Infrastructure.Migrations
                     b.Property<int>("Tipo")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double?>("ValorVenda")
+                        .HasColumnType("REAL");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("PlacaOuChassi")
+                    b.HasIndex("PropriedadeId");
+
+                    b.HasIndex("PropriedadeId", "PlacaOuChassi")
                         .IsUnique()
-                        .HasFilter("[PlacaOuChassi] IS NOT NULL");
+                        .HasFilter("\"PlacaOuChassi\" IS NOT NULL");
 
                     b.ToTable("Veiculos", (string)null);
+                });
+
+            modelBuilder.Entity("AgroVerde.Domain.Entities.AbastecimentoVeiculo", b =>
+                {
+                    b.HasOne("AgroVerde.Domain.Entities.Veiculo", "Veiculo")
+                        .WithMany("Abastecimentos")
+                        .HasForeignKey("VeiculoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Veiculo");
                 });
 
             modelBuilder.Entity("AgroVerde.Domain.Entities.ControleSanitario", b =>
@@ -720,6 +818,17 @@ namespace AgroVerde.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Pessoa");
+                });
+
+            modelBuilder.Entity("AgroVerde.Domain.Entities.ManutencaoVeiculo", b =>
+                {
+                    b.HasOne("AgroVerde.Domain.Entities.Veiculo", "Veiculo")
+                        .WithMany("Manutencoes")
+                        .HasForeignKey("VeiculoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Veiculo");
                 });
 
             modelBuilder.Entity("AgroVerde.Domain.Entities.Pesagem", b =>
@@ -783,6 +892,13 @@ namespace AgroVerde.Infrastructure.Migrations
                     b.Navigation("Reproducoes");
 
                     b.Navigation("Vacinacoes");
+                });
+
+            modelBuilder.Entity("AgroVerde.Domain.Entities.Veiculo", b =>
+                {
+                    b.Navigation("Abastecimentos");
+
+                    b.Navigation("Manutencoes");
                 });
 #pragma warning restore 612, 618
         }

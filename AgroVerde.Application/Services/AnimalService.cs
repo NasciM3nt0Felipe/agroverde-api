@@ -1,3 +1,4 @@
+using System.Globalization;
 using AgroVerde.Application.Common;
 using AgroVerde.Application.DTOs;
 using AgroVerde.Domain.Entities;
@@ -8,11 +9,157 @@ namespace AgroVerde.Application.Services;
 public class AnimalService : IAnimalService
 {
     private readonly IAnimalRepository _repository;
+    private readonly IEstoqueRepository _estoqueRepository;
 
-    public AnimalService(IAnimalRepository repository)
+    private const string CategoriaVacinas = "Vacinas";
+
+    public AnimalService(
+        IAnimalRepository repository,
+        IEstoqueRepository estoqueRepository)
     {
         _repository = repository;
+        _estoqueRepository = estoqueRepository;
     }
+
+    // Datas aceitas: dd/MM/yyyy (formato do app) ou yyyy-MM-dd (ISO).
+    private static readonly string[] FormatosData =
+    [
+        "dd/MM/yyyy",
+        "d/M/yyyy",
+        "yyyy-MM-dd",
+        "yyyy-MM-ddTHH:mm:ss",
+        "yyyy-MM-ddTHH:mm:ss.FFFFFFF"
+    ];
+
+    private static bool TentarLerData(string? texto, out DateTime data) =>
+        DateTime.TryParseExact(
+            texto?.Trim(),
+            FormatosData,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out data);
+
+    public async Task<AppResponse<IEnumerable<AnimalResponse>>>
+        ListarPorPropriedadeAsync(int propriedadeId)
+    {
+        try
+        {
+            var animais = await _repository
+                .ListarPorPropriedadeIdAsync(propriedadeId);
+
+            return AppResponse<IEnumerable<AnimalResponse>>.Ok(
+                "Animais listados com sucesso.",
+                animais.OrderByDescending(a => a.Id).Select(MapToResponse).ToList()
+            );
+        }
+        catch (Exception ex)
+        {
+            return AppResponse<IEnumerable<AnimalResponse>>.Fail(
+                "Erro ao listar animais.",
+                ex
+            );
+        }
+    }
+
+    public async Task<int?> ObterPropriedadeDoAnimalAsync(int animalId)
+    {
+        var animal = await _repository.BuscarPorIdAsync(animalId);
+
+        return animal?.PropriedadeId;
+    }
+
+    public Task<int?> ObterPropriedadeDoRegistroAsync(
+        TipoRegistroAnimal tipo,
+        int id) =>
+        _repository.ObterPropriedadeDoRegistroAsync(tipo, id);
+
+    public async Task<AppResponse<bool>> ExcluirRegistroAsync(
+        TipoRegistroAnimal tipo,
+        int id)
+    {
+        try
+        {
+            var excluido = await _repository.ExcluirRegistroAsync(tipo, id);
+
+            return excluido
+                ? AppResponse<bool>.Ok("Registro excluído com sucesso.", true)
+                : AppResponse<bool>.Fail(
+                    "Registro não encontrado.",
+                    ["Registro não encontrado."]);
+        }
+        catch (Exception ex)
+        {
+            return AppResponse<bool>.Fail("Erro ao excluir registro.", ex);
+        }
+    }
+
+    public async Task<AppResponse<List<PesagemResponse>>>
+        ListarPesagensPorPropriedadeAsync(int propriedadeId)
+    {
+        var lista = await _repository
+            .ListarPesagensPorPropriedadeAsync(propriedadeId);
+
+        return AppResponse<List<PesagemResponse>>.Ok(
+            "Pesagens listadas com sucesso.",
+            lista.Select(MapPesagem).ToList());
+    }
+
+    public async Task<AppResponse<List<VacinacaoResponse>>>
+        ListarVacinacoesPorPropriedadeAsync(int propriedadeId)
+    {
+        var lista = await _repository
+            .ListarVacinacoesPorPropriedadeAsync(propriedadeId);
+
+        return AppResponse<List<VacinacaoResponse>>.Ok(
+            "Vacinações listadas com sucesso.",
+            lista.Select(MapVacinacao).ToList());
+    }
+
+    public async Task<AppResponse<List<ControleSanitarioResponse>>>
+        ListarControlesSanitariosPorPropriedadeAsync(int propriedadeId)
+    {
+        var lista = await _repository
+            .ListarControlesSanitariosPorPropriedadeAsync(propriedadeId);
+
+        return AppResponse<List<ControleSanitarioResponse>>.Ok(
+            "Controles sanitários listados com sucesso.",
+            lista.Select(MapSanitario).ToList());
+    }
+
+    public async Task<AppResponse<List<RegistroReproducaoResponse>>>
+        ListarReproducoesPorPropriedadeAsync(int propriedadeId)
+    {
+        var lista = await _repository
+            .ListarReproducoesPorPropriedadeAsync(propriedadeId);
+
+        return AppResponse<List<RegistroReproducaoResponse>>.Ok(
+            "Registros de reprodução listados com sucesso.",
+            lista.Select(MapReproducao).ToList());
+    }
+
+    private static PesagemResponse MapPesagem(Pesagem p) =>
+        new(p.Id, p.AnimalId, p.PesoKg, p.DataPesagem, p.Observacao);
+
+    private static VacinacaoResponse MapVacinacao(Vacinacao v) =>
+        new(
+            v.Id,
+            v.AnimalId,
+            v.NomeVacina,
+            v.DataAplicacao.ToString("yyyy-MM-dd"),
+            v.ProximaDose?.ToString("yyyy-MM-dd"),
+            v.Observacao);
+
+    private static ControleSanitarioResponse MapSanitario(ControleSanitario c) =>
+        new(
+            c.Id,
+            c.AnimalId,
+            c.Procedimento,
+            c.Data.ToString("yyyy-MM-dd"),
+            c.Medicamento,
+            c.Observacao);
+
+    private static RegistroReproducaoResponse MapReproducao(RegistroReproducao r) =>
+        new(r.Id, r.AnimalId, r.Tipo, r.Data.ToString("yyyy-MM-dd"), r.Observacao);
 
     public async Task<AppResponse<IEnumerable<AnimalResponse>>> ListarTodosAsync()
     {
@@ -62,7 +209,10 @@ public class AnimalService : IAnimalService
                 animal.Status,
                 animal.Observacao,
 
-                animal.Pesagens.Select(p =>
+                animal.Pesagens
+                    .OrderByDescending(p => p.DataPesagem)
+                    .ThenByDescending(p => p.Id)
+                    .Select(p =>
                     new PesagemResponse(
                         p.Id,
                         p.AnimalId,
@@ -72,7 +222,10 @@ public class AnimalService : IAnimalService
                     )
                 ),
 
-                animal.Vacinacoes.Select(v =>
+                animal.Vacinacoes
+                    .OrderByDescending(v => v.DataAplicacao)
+                    .ThenByDescending(v => v.Id)
+                    .Select(v =>
                     new VacinacaoResponse(
                         v.Id,
                         v.AnimalId,
@@ -83,7 +236,10 @@ public class AnimalService : IAnimalService
                     )
                 ),
 
-                animal.ControlesSanitarios.Select(c =>
+                animal.ControlesSanitarios
+                    .OrderByDescending(c => c.Data)
+                    .ThenByDescending(c => c.Id)
+                    .Select(c =>
                     new ControleSanitarioResponse(
                         c.Id,
                         c.AnimalId,
@@ -94,7 +250,10 @@ public class AnimalService : IAnimalService
                     )
                 ),
 
-                animal.Reproducoes.Select(r =>
+                animal.Reproducoes
+                    .OrderByDescending(r => r.Data)
+                    .ThenByDescending(r => r.Id)
+                    .Select(r =>
                     new RegistroReproducaoResponse(
                         r.Id,
                         r.AnimalId,
@@ -327,7 +486,7 @@ public class AnimalService : IAnimalService
                 );
             }
 
-            if (!DateTime.TryParse(request.DataAplicacao, out var dataAplicacao))
+            if (!TentarLerData(request.DataAplicacao, out var dataAplicacao))
             {
                 return AppResponse<VacinacaoResponse>.Fail(
                     "A data de aplicação é inválida.",
@@ -339,7 +498,7 @@ public class AnimalService : IAnimalService
 
             if (!string.IsNullOrWhiteSpace(request.ProximaDose))
             {
-                if (!DateTime.TryParse(
+                if (!TentarLerData(
                         request.ProximaDose,
                         out var dataProximaDose))
                 {
@@ -352,18 +511,79 @@ public class AnimalService : IAnimalService
                 proximaDose = dataProximaDose;
             }
 
+            // A dose sai do estoque da mesma propriedade do animal.
+            EstoqueItem? item;
+
+            if (request.EstoqueItemId.HasValue)
+            {
+                item = await _estoqueRepository
+                    .BuscarPorIdAsync(request.EstoqueItemId.Value);
+
+                if (item is not null &&
+                    (item.PropriedadeId != animal.PropriedadeId ||
+                     !string.Equals(
+                         item.Categoria.Trim(),
+                         CategoriaVacinas,
+                         StringComparison.OrdinalIgnoreCase)))
+                {
+                    item = null;
+                }
+            }
+            else
+            {
+                item = await _estoqueRepository
+                    .BuscarPorNomeCategoriaEPropriedadeAsync(
+                        animal.PropriedadeId,
+                        request.Vacina.Trim(),
+                        CategoriaVacinas);
+            }
+
+            if (item is null)
+            {
+                return AppResponse<VacinacaoResponse>.Fail(
+                    "Vacina não cadastrada no estoque desta propriedade.",
+                    ["Vacina não cadastrada no estoque desta propriedade."]
+                );
+            }
+
+            if (item.QuantidadeAtual < 1)
+            {
+                return AppResponse<VacinacaoResponse>.Fail(
+                    "Não há estoque disponível para esta vacina.",
+                    ["Não há estoque disponível para esta vacina."]
+                );
+            }
+
+            // Evita registrar (e baixar) a mesma dose duas vezes.
+            if (await _repository.ExisteVacinacaoAsync(
+                    animal.Id, item.Nome, dataAplicacao))
+            {
+                return AppResponse<VacinacaoResponse>.Fail(
+                    "Esta vacina já foi registrada para o animal nesta data.",
+                    ["Esta vacina já foi registrada para o animal nesta data."]
+                );
+            }
+
             var vacinacao = new Vacinacao
             {
                 AnimalId = request.AnimalId,
-                NomeVacina = request.Vacina.Trim(),
+                NomeVacina = item.Nome.Trim(),
                 DataAplicacao = dataAplicacao,
                 ProximaDose = proximaDose,
                 Observacao = request.Observacao?.Trim()
             };
 
-            animal.Vacinacoes.Add(vacinacao);
+            // Baixa da dose e histórico na mesma transação.
+            var registrado = await _repository
+                .RegistrarVacinacaoComBaixaAsync(vacinacao, item.Id);
 
-            await _repository.AtualizarAsync(animal);
+            if (!registrado)
+            {
+                return AppResponse<VacinacaoResponse>.Fail(
+                    "Não há estoque disponível para esta vacina.",
+                    ["Não há estoque disponível para esta vacina."]
+                );
+            }
 
             var response = new VacinacaoResponse(
                 vacinacao.Id,
@@ -413,7 +633,7 @@ public class AnimalService : IAnimalService
                 );
             }
 
-            if (!DateTime.TryParse(request.Data, out var data))
+            if (!TentarLerData(request.Data, out var data))
             {
                 return AppResponse<ControleSanitarioResponse>.Fail(
                     "A data é inválida.",
@@ -505,7 +725,7 @@ public class AnimalService : IAnimalService
                 );
             }
 
-            if (!DateTime.TryParse(request.Data, out var data))
+            if (!TentarLerData(request.Data, out var data))
             {
                 return AppResponse<RegistroReproducaoResponse>.Fail(
                     "A data é inválida.",

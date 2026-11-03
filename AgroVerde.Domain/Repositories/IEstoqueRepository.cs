@@ -18,6 +18,9 @@ public interface IEstoqueRepository : IRepository<EstoqueItem>
 
     Task<bool> ExisteConsumoPorSafraAsync(int safraId);
 
+    // Consumos da safra, do mais recente para o mais antigo.
+    Task<List<EstoqueInsumo>> ListarConsumosPorSafraIdAsync(int safraId);
+
     Task<bool> ExisteConsumoPorSafraECategoriaAsync(
         int safraId,
         string categoria);

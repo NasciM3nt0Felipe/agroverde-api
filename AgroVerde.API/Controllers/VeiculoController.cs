@@ -1,109 +1,149 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using AgroVerde.Application.Common;
 using AgroVerde.Application.DTOs;
 using AgroVerde.Application.Services;
 using AgroVerde.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace AgroVerde.API.Controllers
 {
+    // Veículos, abastecimentos e manutenções. O usuário vem do token e só
+    // acessa veículos das propriedades dele; recursos de outros usuários
+    // respondem 404. Abastecimentos e manutenções geram a despesa no
+    // Financeiro na mesma transação (o app não cria essas despesas).
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     [Produces("application/json")]
     public class VeiculoController : ControllerBase
     {
         private readonly IVeiculoService _veiculoService;
+        private readonly IPropriedadeService _propriedadeService;
+        private readonly IMemoryCache _cache;
 
-        public VeiculoController(IVeiculoService veiculoService)
+        public VeiculoController(
+            IVeiculoService veiculoService,
+            IPropriedadeService propriedadeService,
+            IMemoryCache cache)
         {
             _veiculoService = veiculoService;
+            _propriedadeService = propriedadeService;
+            _cache = cache;
         }
 
-        /// <summary>
-        /// Lista todos os veículos e maquinários cadastrados.
-        /// </summary>
+        private int UsuarioId =>
+            int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+        private async Task<bool> TemAcessoPropriedadeAsync(int propriedadeId)
+        {
+            if (propriedadeId <= 0)
+                return false;
+
+            var resultado = await _propriedadeService.BuscarPorIdAsync(propriedadeId, UsuarioId);
+
+            return resultado.Success && resultado.Data != null;
+        }
+
+        // Propriedade do recurso, se pertencer ao usuário; senão null.
+        private async Task<int?> AutorizarAsync(int? propriedadeId) =>
+            propriedadeId.HasValue && await TemAcessoPropriedadeAsync(propriedadeId.Value)
+                ? propriedadeId
+                : null;
+
+        // O Dashboard soma as despesas do Financeiro.
+        private void DescartarCacheDashboard(int propriedadeId) =>
+            _cache.Remove(DashboardController.ChaveCache(propriedadeId));
+
+        private static IActionResult Erro500(string contexto, Exception ex) =>
+            new ObjectResult(AppResponse<string>.Fail($"Erro interno ao {contexto}: {ex.Message}"))
+            {
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+
+        private IActionResult DadosInvalidos()
+        {
+            var erros = ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage)
+                .Where(m => !string.IsNullOrWhiteSpace(m))
+                .ToList();
+
+            return BadRequest(AppResponse<string>.Fail(
+                erros.FirstOrDefault() ?? "Dados inválidos.", erros));
+        }
+
+        /// <summary>Veículos de todas as propriedades do usuário.</summary>
         [HttpGet]
-        [ProducesResponseType(typeof(AppResponse<IEnumerable<VeiculoResponse>>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> ObterTodos()
         {
             try
             {
-                var resultado = await _veiculoService.ObterTodosAsync();
-                return Ok(resultado);
+                var propriedades = await _propriedadeService.ListarPorUsuarioIdAsync(UsuarioId);
+                var lista = new List<VeiculoResponse>();
+
+                foreach (var propriedade in propriedades.Data ?? [])
+                    lista.AddRange((await _veiculoService.ObterPorPropriedadeAsync(propriedade.Id)).Data ?? []);
+
+                return Ok(AppResponse<IEnumerable<VeiculoResponse>>.Ok("Veículos recuperados com sucesso.", lista));
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    AppResponse<string>.Fail($"Erro interno ao buscar veículos: {ex.Message}"));
+                return Erro500("buscar veículos", ex);
             }
         }
 
-        /// <summary>
-        /// Busca um veículo pelo seu identificador (ID).
-        /// </summary>
+        /// <summary>Veículos da propriedade, com totais de abastecimento e manutenção.</summary>
+        [HttpGet("propriedade/{propriedadeId:int}")]
+        public async Task<IActionResult> ObterPorPropriedade(int propriedadeId)
+        {
+            if (!await TemAcessoPropriedadeAsync(propriedadeId))
+                return NotFound();
+
+            return Ok(await _veiculoService.ObterPorPropriedadeAsync(propriedadeId));
+        }
+
         [HttpGet("{id:int}")]
-        [ProducesResponseType(typeof(AppResponse<VeiculoResponse>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> ObterPorId(int id)
         {
-            try
-            {
-                if (id <= 0)
-                    return BadRequest(AppResponse<string>.Fail("O ID informado deve ser maior que zero."));
+            if (await AutorizarAsync(await _veiculoService.ObterPropriedadeDoVeiculoAsync(id)) == null)
+                return NotFound();
 
-                var resultado = await _veiculoService.ObterPorIdAsync(id);
-                if (!resultado.Success)
-                    return NotFound(resultado);
-
-                return Ok(resultado);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    AppResponse<string>.Fail($"Erro interno ao buscar veículo: {ex.Message}"));
-            }
+            var resultado = await _veiculoService.ObterPorIdAsync(id);
+            return resultado.Success ? Ok(resultado) : NotFound(resultado);
         }
 
-        /// <summary>
-        /// Filtra veículos pelo status de operação.
-        /// </summary>
+        /// <summary>Veículos do usuário com o status informado.</summary>
         [HttpGet("status/{status}")]
-        [ProducesResponseType(typeof(AppResponse<IEnumerable<VeiculoResponse>>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> ObterPorStatus(StatusVeiculo status)
         {
-            try
-            {
-                var resultado = await _veiculoService.ObterPorStatusAsync(status);
-                return Ok(resultado);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    AppResponse<string>.Fail($"Erro ao filtrar veículos por status: {ex.Message}"));
-            }
+            var propriedades = await _propriedadeService.ListarPorUsuarioIdAsync(UsuarioId);
+            var lista = new List<VeiculoResponse>();
+
+            foreach (var propriedade in propriedades.Data ?? [])
+                lista.AddRange(((await _veiculoService.ObterPorPropriedadeAsync(propriedade.Id)).Data ?? [])
+                    .Where(v => v.Status == status));
+
+            return Ok(AppResponse<IEnumerable<VeiculoResponse>>.Ok("Veículos filtrados com sucesso.", lista));
         }
 
-        /// <summary>
-        /// Cadastra um novo veículo/maquinário.
-        /// </summary>
         [HttpPost]
-        [ProducesResponseType(typeof(AppResponse<VeiculoResponse>), StatusCodes.Status201Created)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> Criar([FromBody] VeiculoRequest request)
         {
+            if (!ModelState.IsValid)
+                return DadosInvalidos();
+
+            if (!await TemAcessoPropriedadeAsync(request.PropriedadeId))
+                return NotFound();
+
             try
             {
-                if (!ModelState.IsValid)
-                    return BadRequest(AppResponse<string>.Fail("Dados inválidos fornecidos para cadastro."));
-
                 var resultado = await _veiculoService.CriarAsync(request);
                 if (!resultado.Success)
                     return BadRequest(resultado);
@@ -112,109 +152,170 @@ namespace AgroVerde.API.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    AppResponse<string>.Fail($"Erro interno ao cadastrar veículo: {ex.Message}"));
+                return Erro500("cadastrar veículo", ex);
             }
         }
 
-        /// <summary>
-        /// Atualiza os dados de um veículo existente.
-        /// </summary>
         [HttpPut("{id:int}")]
-        [ProducesResponseType(typeof(AppResponse<VeiculoResponse>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> Atualizar(int id, [FromBody] VeiculoRequest request)
         {
+            var propriedadeId = await AutorizarAsync(await _veiculoService.ObterPropriedadeDoVeiculoAsync(id));
+            if (propriedadeId == null)
+                return NotFound();
+
+            if (!ModelState.IsValid)
+                return DadosInvalidos();
+
+            if (request.PropriedadeId != propriedadeId)
+                return BadRequest(AppResponse<string>.Fail("Não é permitido alterar a propriedade do veículo."));
+
             try
             {
-                if (id <= 0)
-                    return BadRequest(AppResponse<string>.Fail("O ID informado deve ser maior que zero."));
-
-                if (!ModelState.IsValid)
-                    return BadRequest(AppResponse<string>.Fail("Dados inválidos fornecidos para atualização."));
-
                 var resultado = await _veiculoService.AtualizarAsync(id, request);
-                if (!resultado.Success)
-                {
-                    if (resultado.Message != null && resultado.Message.Contains("não encontrado", StringComparison.OrdinalIgnoreCase))
-                        return NotFound(resultado);
-
-                    return BadRequest(resultado);
-                }
-
-                return Ok(resultado);
+                return resultado.Success ? Ok(resultado) : BadRequest(resultado);
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    AppResponse<string>.Fail($"Erro interno ao atualizar veículo: {ex.Message}"));
+                return Erro500("atualizar veículo", ex);
             }
         }
 
-        /// <summary>
-        /// Atualiza pontualmente o horímetro e a quilometragem do veículo.
-        /// </summary>
         [HttpPatch("{id:int}/hodometro")]
-        [ProducesResponseType(typeof(AppResponse<bool>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> AtualizarHodometro(int id, [FromBody] AtualizarHodometroRequest request)
         {
-            try
-            {
-                if (id <= 0)
-                    return BadRequest(AppResponse<string>.Fail("O ID informado deve ser maior que zero."));
+            if (await AutorizarAsync(await _veiculoService.ObterPropriedadeDoVeiculoAsync(id)) == null)
+                return NotFound();
 
-                if (!ModelState.IsValid)
-                    return BadRequest(AppResponse<string>.Fail("Dados de horímetro/quilometragem inválidos."));
+            if (!ModelState.IsValid)
+                return DadosInvalidos();
 
-                var resultado = await _veiculoService.AtualizarHodometroAsync(id, request);
-                if (!resultado.Success)
-                {
-                    if (resultado.Message != null && resultado.Message.Contains("não encontrado", StringComparison.OrdinalIgnoreCase))
-                        return NotFound(resultado);
-
-                    return BadRequest(resultado);
-                }
-
-                return Ok(resultado);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    AppResponse<string>.Fail($"Erro interno ao atualizar medidores: {ex.Message}"));
-            }
+            var resultado = await _veiculoService.AtualizarHodometroAsync(id, request);
+            return resultado.Success ? Ok(resultado) : BadRequest(resultado);
         }
 
-        /// <summary>
-        /// Remove um veículo da base de dados.
-        /// </summary>
+        /// <summary>Remove o veículo (recusado se houver abastecimentos ou manutenções).</summary>
         [HttpDelete("{id:int}")]
-        [ProducesResponseType(typeof(AppResponse<bool>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(AppResponse<string>), StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> Remover(int id)
         {
-            try
-            {
-                if (id <= 0)
-                    return BadRequest(AppResponse<string>.Fail("O ID informado deve ser maior que zero."));
+            if (await AutorizarAsync(await _veiculoService.ObterPropriedadeDoVeiculoAsync(id)) == null)
+                return NotFound();
 
-                var resultado = await _veiculoService.RemoverAsync(id);
-                if (!resultado.Success)
-                    return NotFound(resultado);
+            var resultado = await _veiculoService.RemoverAsync(id);
+            return resultado.Success ? Ok(resultado) : BadRequest(resultado);
+        }
 
-                return Ok(resultado);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    AppResponse<string>.Fail($"Erro interno ao remover veículo: {ex.Message}"));
-            }
+        // ---------- Abastecimentos ----------
+
+        [HttpGet("{veiculoId:int}/abastecimentos")]
+        public async Task<IActionResult> ListarAbastecimentos(int veiculoId)
+        {
+            if (await AutorizarAsync(await _veiculoService.ObterPropriedadeDoVeiculoAsync(veiculoId)) == null)
+                return NotFound();
+
+            return Ok(await _veiculoService.ListarAbastecimentosAsync(veiculoId));
+        }
+
+        [HttpPost("abastecimentos")]
+        public async Task<IActionResult> CriarAbastecimento([FromBody] AbastecimentoRequest request)
+        {
+            var propriedadeId = await AutorizarAsync(await _veiculoService.ObterPropriedadeDoVeiculoAsync(request.VeiculoId));
+            if (propriedadeId == null)
+                return NotFound();
+
+            var resultado = await _veiculoService.CriarAbastecimentoAsync(request);
+            if (!resultado.Success)
+                return BadRequest(resultado);
+
+            DescartarCacheDashboard(propriedadeId.Value);
+            return Ok(resultado);
+        }
+
+        [HttpPut("abastecimentos/{id:int}")]
+        public async Task<IActionResult> AtualizarAbastecimento(int id, [FromBody] AbastecimentoRequest request)
+        {
+            var propriedadeId = await AutorizarAsync(await _veiculoService.ObterPropriedadeDoAbastecimentoAsync(id));
+            if (propriedadeId == null)
+                return NotFound();
+
+            var resultado = await _veiculoService.AtualizarAbastecimentoAsync(id, request);
+            if (!resultado.Success)
+                return BadRequest(resultado);
+
+            DescartarCacheDashboard(propriedadeId.Value);
+            return Ok(resultado);
+        }
+
+        /// <summary>Exclui o abastecimento e a despesa gerada por ele.</summary>
+        [HttpDelete("abastecimentos/{id:int}")]
+        public async Task<IActionResult> ExcluirAbastecimento(int id)
+        {
+            var propriedadeId = await AutorizarAsync(await _veiculoService.ObterPropriedadeDoAbastecimentoAsync(id));
+            if (propriedadeId == null)
+                return NotFound();
+
+            var resultado = await _veiculoService.ExcluirAbastecimentoAsync(id);
+            if (!resultado.Success)
+                return NotFound(resultado);
+
+            DescartarCacheDashboard(propriedadeId.Value);
+            return Ok(resultado);
+        }
+
+        // ---------- Manutenções ----------
+
+        [HttpGet("{veiculoId:int}/manutencoes")]
+        public async Task<IActionResult> ListarManutencoes(int veiculoId)
+        {
+            if (await AutorizarAsync(await _veiculoService.ObterPropriedadeDoVeiculoAsync(veiculoId)) == null)
+                return NotFound();
+
+            return Ok(await _veiculoService.ListarManutencoesAsync(veiculoId));
+        }
+
+        [HttpPost("manutencoes")]
+        public async Task<IActionResult> CriarManutencao([FromBody] ManutencaoRequest request)
+        {
+            var propriedadeId = await AutorizarAsync(await _veiculoService.ObterPropriedadeDoVeiculoAsync(request.VeiculoId));
+            if (propriedadeId == null)
+                return NotFound();
+
+            var resultado = await _veiculoService.CriarManutencaoAsync(request);
+            if (!resultado.Success)
+                return BadRequest(resultado);
+
+            DescartarCacheDashboard(propriedadeId.Value);
+            return Ok(resultado);
+        }
+
+        [HttpPut("manutencoes/{id:int}")]
+        public async Task<IActionResult> AtualizarManutencao(int id, [FromBody] ManutencaoRequest request)
+        {
+            var propriedadeId = await AutorizarAsync(await _veiculoService.ObterPropriedadeDaManutencaoAsync(id));
+            if (propriedadeId == null)
+                return NotFound();
+
+            var resultado = await _veiculoService.AtualizarManutencaoAsync(id, request);
+            if (!resultado.Success)
+                return BadRequest(resultado);
+
+            DescartarCacheDashboard(propriedadeId.Value);
+            return Ok(resultado);
+        }
+
+        /// <summary>Exclui a manutenção e a despesa gerada por ela.</summary>
+        [HttpDelete("manutencoes/{id:int}")]
+        public async Task<IActionResult> ExcluirManutencao(int id)
+        {
+            var propriedadeId = await AutorizarAsync(await _veiculoService.ObterPropriedadeDaManutencaoAsync(id));
+            if (propriedadeId == null)
+                return NotFound();
+
+            var resultado = await _veiculoService.ExcluirManutencaoAsync(id);
+            if (!resultado.Success)
+                return NotFound(resultado);
+
+            DescartarCacheDashboard(propriedadeId.Value);
+            return Ok(resultado);
         }
     }
 }

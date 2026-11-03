@@ -40,12 +40,15 @@ public record PesagemResponse(
     string? Observacao
 );
 
+// EstoqueItemId: vacina do estoque que terá 1 dose baixada. Se não for
+// informado, a vacina é procurada pelo nome no estoque da propriedade.
 public record VacinacaoRequest(
     int AnimalId,
     string Vacina,
     string DataAplicacao,
     string? ProximaDose,
-    string? Observacao
+    string? Observacao,
+    int? EstoqueItemId = null
 );
 
 public record VacinacaoResponse(

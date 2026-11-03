@@ -1,9 +1,11 @@
 
 using System.Security.Claims;
+using AgroVerde.Application.Common;
 using AgroVerde.Application.DTOs;
 using AgroVerde.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace AgroVerde.API.Controllers;
 
@@ -14,13 +16,16 @@ public class EstoqueController : ControllerBase
 {
     private readonly IEstoqueService _estoqueService;
     private readonly IPropriedadeService _propriedadeService;
+    private readonly IMemoryCache _cache;
 
     public EstoqueController(
         IEstoqueService estoqueService,
-        IPropriedadeService propriedadeService)
+        IPropriedadeService propriedadeService,
+        IMemoryCache cache)
     {
         _estoqueService = estoqueService;
         _propriedadeService = propriedadeService;
+        _cache = cache;
     }
 
     private int UsuarioId =>
@@ -105,6 +110,10 @@ public class EstoqueController : ControllerBase
         if (!response.Success || response.Data == null)
             return BadRequest(response);
 
+        // O cadastro pode gerar a despesa da compra: descarta o cache
+        // do dashboard para os totais refletirem a nova despesa.
+        _cache.Remove(DashboardController.ChaveCache(request.PropriedadeId));
+
         return CreatedAtAction(
             nameof(BuscarPorId),
             new { id = response.Data.Id },
@@ -161,6 +170,54 @@ public class EstoqueController : ControllerBase
         return response.Success
             ? Ok(response)
             : BadRequest(response);
+    }
+
+    // A safra precisa pertencer a uma propriedade do usuário.
+    private async Task<bool> TemAcessoSafraAsync(int safraId)
+    {
+        var propriedadeId = await _estoqueService
+            .ObterPropriedadeDaSafraAsync(safraId);
+
+        return propriedadeId.HasValue &&
+            await TemAcessoPropriedadeAsync(propriedadeId.Value);
+    }
+
+    // GET api/Estoque/consumos/safra/5?categoria=Sementes
+    [HttpGet("consumos/safra/{safraId:int}")]
+    public async Task<IActionResult> ListarConsumosPorSafra(
+        int safraId,
+        [FromQuery] string? categoria)
+    {
+        if (!await TemAcessoSafraAsync(safraId))
+            return NotFound();
+
+        var response = await _estoqueService
+            .ListarConsumosPorSafraAsync(safraId, categoria);
+
+        return response.Success
+            ? Ok(response)
+            : BadRequest(response);
+    }
+
+    // GET api/Estoque/consumos/safra/5/ultimo?categoria=Sementes
+    // Retorna data = null quando não há consumo da categoria.
+    [HttpGet("consumos/safra/{safraId:int}/ultimo")]
+    public async Task<IActionResult> BuscarUltimoConsumoPorSafra(
+        int safraId,
+        [FromQuery] string? categoria)
+    {
+        if (!await TemAcessoSafraAsync(safraId))
+            return NotFound();
+
+        var response = await _estoqueService
+            .ListarConsumosPorSafraAsync(safraId, categoria);
+
+        if (!response.Success)
+            return BadRequest(response);
+
+        return Ok(AppResponse<ConsumoSafraResponse?>.Ok(
+            "Último consumo da safra.",
+            response.Data?.FirstOrDefault()));
     }
 
     [HttpPost("consumo-safra")]

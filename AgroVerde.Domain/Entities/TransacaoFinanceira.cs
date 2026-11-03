@@ -55,14 +55,17 @@ public static class OrigemFinanceira
     // nem excluído pelo Financeiro.
     public const string Estoque = "Estoque";
 
+    // Também geradas pela API (/api/Veiculo): a despesa é mantida pelo
+    // módulo Veículos (alterar ou excluir o abastecimento/manutenção).
+    public const string Abastecimento = "Abastecimento";
+    public const string ManutencaoVeiculo = "ManutencaoVeiculo";
+
     // Origens informadas pelo app para módulos que ainda gravam localmente
     // (SQLite). O lançamento não pode ser editado pelo Financeiro (os valores
     // vêm do módulo de origem), mas pode ser excluído para corrigir enganos.
     public const string CompraEstoque = "CompraEstoque";
     public const string FolhaPagamento = "FolhaPagamento";
     public const string VendaGraos = "VendaGraos";
-    public const string Abastecimento = "Abastecimento";
-    public const string ManutencaoVeiculo = "ManutencaoVeiculo";
     public const string VendaVeiculo = "VendaVeiculo";
 
     private static readonly string[] InformadasPeloApp =
@@ -70,8 +73,6 @@ public static class OrigemFinanceira
         CompraEstoque,
         FolhaPagamento,
         VendaGraos,
-        Abastecimento,
-        ManutencaoVeiculo,
         VendaVeiculo
     ];
 

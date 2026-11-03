@@ -361,6 +361,70 @@ public class EstoqueService : IEstoqueService
         }
     }
 
+    public async Task<int?> ObterPropriedadeDaSafraAsync(int safraId)
+    {
+        var safra = await _safraRepository.BuscarPorIdAsync(safraId);
+
+        if (safra == null)
+            return null;
+
+        var talhao = await _talhaoRepository.BuscarPorIdAsync(safra.TalhaoId);
+
+        return talhao?.PropriedadeId;
+    }
+
+    public async Task<AppResponse<List<ConsumoSafraResponse>>>
+        ListarConsumosPorSafraAsync(int safraId, string? categoria)
+    {
+        try
+        {
+            var consumos = await _estoqueRepository
+                .ListarConsumosPorSafraIdAsync(safraId);
+
+            var itens = new Dictionary<int, EstoqueItem?>();
+
+            foreach (var id in consumos.Select(c => c.EstoqueItemId).Distinct())
+                itens[id] = await _estoqueRepository.BuscarPorIdAsync(id);
+
+            var response = consumos
+                .Select(c =>
+                {
+                    var item = itens[c.EstoqueItemId];
+
+                    return new ConsumoSafraResponse
+                    {
+                        Id = c.Id,
+                        SafraId = c.SafraId,
+                        EstoqueItemId = c.EstoqueItemId,
+                        Nome = item?.Nome ?? "Item excluído",
+                        Categoria = item?.Categoria ?? string.Empty,
+                        UnidadeMedida = item?.UnidadeMedida ?? string.Empty,
+                        QuantidadeUtilizada = c.QuantidadeUtilizada,
+                        ValorTotal = c.ValorTotal,
+                        DataMovimentacao = c.DataMovimentacao,
+                        Observacao = c.Observacao
+                    };
+                })
+                .Where(c =>
+                    string.IsNullOrWhiteSpace(categoria) ||
+                    string.Equals(
+                        c.Categoria.Trim(),
+                        categoria.Trim(),
+                        StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            return AppResponse<List<ConsumoSafraResponse>>.Ok(
+                "Consumos da safra listados com sucesso.",
+                response);
+        }
+        catch (Exception ex)
+        {
+            return AppResponse<List<ConsumoSafraResponse>>.Fail(
+                "Erro ao listar os consumos da safra.",
+                ex);
+        }
+    }
+
     // Gera uma despesa somente quando a compra possui valor positivo.
     private static TransacaoFinanceira? MontarDespesaDeCompra(
         EstoqueItem item)

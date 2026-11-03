@@ -30,4 +30,13 @@ public interface IEstoqueService
 
     Task<AppResponse<EstoqueItemResponse>> RegistrarConsumoSafraAsync(
         ConsumoEstoqueRequest request);
+
+    // Propriedade à qual a safra pertence (via talhão), ou null.
+    Task<int?> ObterPropriedadeDaSafraAsync(int safraId);
+
+    // Consumos da safra com nome, categoria e unidade do item,
+    // do mais recente para o mais antigo. Categoria é opcional.
+    Task<AppResponse<List<ConsumoSafraResponse>>> ListarConsumosPorSafraAsync(
+        int safraId,
+        string? categoria);
 }

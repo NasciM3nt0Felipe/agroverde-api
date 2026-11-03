@@ -37,6 +37,8 @@ public class AgroVerdeDbContext : DbContext
 
     // Veículos
     public DbSet<Veiculo> Veiculos => Set<Veiculo>();
+    public DbSet<AbastecimentoVeiculo> AbastecimentosVeiculo => Set<AbastecimentoVeiculo>();
+    public DbSet<ManutencaoVeiculo> ManutencoesVeiculo => Set<ManutencaoVeiculo>();
 
     // Pessoas
     public DbSet<Pessoa> Pessoas => Set<Pessoa>();

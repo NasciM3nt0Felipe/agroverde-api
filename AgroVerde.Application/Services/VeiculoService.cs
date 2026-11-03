@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -47,9 +48,12 @@ namespace AgroVerde.Application.Services
 
         public async Task<AppResponse<VeiculoResponse>> CriarAsync(VeiculoRequest req)
         {
-            // Regra 1: Nome/Identificação obrigatória com tamanho mínimo
-            if (string.IsNullOrWhiteSpace(req.Nome) || req.Nome.Trim().Length < 3)
-                return AppResponse<VeiculoResponse>.Fail("O nome/identificação do veículo deve conter pelo menos 3 caracteres.");
+            // Regra 1: Nome/Identificação obrigatória
+            if (string.IsNullOrWhiteSpace(req.Nome))
+                return AppResponse<VeiculoResponse>.Fail("Informe o nome/identificação do veículo.");
+
+            if (req.PropriedadeId <= 0)
+                return AppResponse<VeiculoResponse>.Fail("A propriedade do veículo é obrigatória.");
 
             // Regra 2: Ano de fabricação consistente
             int anoLimite = DateTime.UtcNow.Year + 1;
@@ -69,13 +73,17 @@ namespace AgroVerde.Application.Services
             if (!string.IsNullOrWhiteSpace(req.PlacaOuChassi))
             {
                 identificadorLimpo = Regex.Replace(req.PlacaOuChassi.Trim().ToUpper(), @"[^A-Z0-9]", "");
-                var existente = await _veiculoRepository.ObterPorPlacaOuChassiAsync(identificadorLimpo);
+                var existente = await _veiculoRepository.ObterPorPlacaNaPropriedadeAsync(req.PropriedadeId, identificadorLimpo);
                 if (existente != null)
                     return AppResponse<VeiculoResponse>.Fail("Já existe um veículo cadastrado com esta placa ou chassi.");
             }
 
             var veiculo = new Veiculo
             {
+                PropriedadeId = req.PropriedadeId,
+                Marca = req.Marca?.Trim(),
+                ValorVenda = req.ValorVenda,
+                DataVenda = req.DataVenda,
                 Nome = req.Nome.Trim(),
                 PlacaOuChassi = identificadorLimpo,
                 Tipo = req.Tipo,
@@ -103,8 +111,8 @@ namespace AgroVerde.Application.Services
             if (veiculo == null)
                 return AppResponse<VeiculoResponse>.Fail("Veículo não encontrado.");
 
-            if (string.IsNullOrWhiteSpace(req.Nome) || req.Nome.Trim().Length < 3)
-                return AppResponse<VeiculoResponse>.Fail("O nome/identificação do veículo deve conter pelo menos 3 caracteres.");
+            if (string.IsNullOrWhiteSpace(req.Nome))
+                return AppResponse<VeiculoResponse>.Fail("Informe o nome/identificação do veículo.");
 
             int anoLimite = DateTime.UtcNow.Year + 1;
             if (req.AnoFabricacao.HasValue && (req.AnoFabricacao < 1950 || req.AnoFabricacao > anoLimite))
@@ -125,12 +133,15 @@ namespace AgroVerde.Application.Services
             if (!string.IsNullOrWhiteSpace(req.PlacaOuChassi))
             {
                 identificadorLimpo = Regex.Replace(req.PlacaOuChassi.Trim().ToUpper(), @"[^A-Z0-9]", "");
-                var existente = await _veiculoRepository.ObterPorPlacaOuChassiAsync(identificadorLimpo);
+                var existente = await _veiculoRepository.ObterPorPlacaNaPropriedadeAsync(veiculo.PropriedadeId, identificadorLimpo);
                 if (existente != null && existente.Id != id)
                     return AppResponse<VeiculoResponse>.Fail("Esta placa ou chassi já está em uso por outro veículo.");
             }
 
             veiculo.Nome = req.Nome.Trim();
+            veiculo.Marca = req.Marca?.Trim();
+            veiculo.ValorVenda = req.ValorVenda;
+            veiculo.DataVenda = req.DataVenda;
             veiculo.PlacaOuChassi = identificadorLimpo;
             veiculo.Tipo = req.Tipo;
             veiculo.Modelo = req.Modelo?.Trim();
@@ -138,7 +149,7 @@ namespace AgroVerde.Application.Services
             veiculo.HorimetroAtual = req.HorimetroAtual;
             veiculo.QuilometragemAtual = req.QuilometragemAtual;
             veiculo.Status = req.Status;
-            veiculo.DataAquisicao = req.DataAquisicao;
+            veiculo.DataAquisicao = req.DataAquisicao == default ? veiculo.DataAquisicao : req.DataAquisicao;
             veiculo.Observacoes = req.Observacoes?.Trim();
 
             _veiculoRepository.Update(veiculo);
@@ -183,15 +194,292 @@ namespace AgroVerde.Application.Services
             if (veiculo == null)
                 return AppResponse<bool>.Fail("Veículo não encontrado.");
 
+            if (await _veiculoRepository.PossuiRegistrosAsync(id))
+                return AppResponse<bool>.Fail(
+                    $"Não é possível excluir o veículo \"{veiculo.Nome}\" porque ele possui abastecimentos ou manutenções registrados. Exclua esses registros antes.");
+
             _veiculoRepository.Delete(veiculo);
             await _veiculoRepository.SaveChangesAsync();
 
             return AppResponse<bool>.Ok("Veículo removido com sucesso.", true);
         }
 
+        // ---------- Por propriedade ----------
+
+        public async Task<AppResponse<List<VeiculoResponse>>> ObterPorPropriedadeAsync(int propriedadeId)
+        {
+            var lista = await _veiculoRepository.ListarPorPropriedadeAsync(propriedadeId);
+            var totais = await _veiculoRepository.ObterTotaisAsync(lista.Select(v => v.Id));
+
+            var dtos = lista.Select(v =>
+            {
+                var dto = MapearParaResponse(v);
+                if (totais.TryGetValue(v.Id, out var t))
+                {
+                    dto.TotalAbastecimentos = t.Abastecimento;
+                    dto.TotalLitros = t.Litros;
+                    dto.TotalManutencoes = t.Manutencao;
+                    dto.QuantidadeManutencoes = t.QtdManutencoes;
+                }
+                return dto;
+            }).ToList();
+
+            return AppResponse<List<VeiculoResponse>>.Ok("Veículos recuperados com sucesso.", dtos);
+        }
+
+        public async Task<int?> ObterPropriedadeDoVeiculoAsync(int veiculoId) =>
+            (await _veiculoRepository.GetByIdAsync(veiculoId))?.PropriedadeId;
+
+        public async Task<int?> ObterPropriedadeDoAbastecimentoAsync(int id) =>
+            (await _veiculoRepository.ObterAbastecimentoAsync(id))?.Veiculo.PropriedadeId;
+
+        public async Task<int?> ObterPropriedadeDaManutencaoAsync(int id) =>
+            (await _veiculoRepository.ObterManutencaoAsync(id))?.Veiculo.PropriedadeId;
+
+        // ---------- Datas ----------
+
+        private static readonly string[] FormatosData =
+        [
+            "dd/MM/yyyy",
+            "d/M/yyyy",
+            "yyyy-MM-dd",
+            "yyyy-MM-ddTHH:mm:ss",
+            "yyyy-MM-ddTHH:mm:ss.FFFFFFF"
+        ];
+
+        private static bool TentarLerData(string? texto, out DateTime data) =>
+            DateTime.TryParseExact(
+                texto?.Trim(),
+                FormatosData,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out data);
+
+        // ---------- Abastecimentos ----------
+
+        private static AbastecimentoResponse MapearAbastecimento(AbastecimentoVeiculo a, int? lancamentoId = null) => new()
+        {
+            Id = a.Id,
+            VeiculoId = a.VeiculoId,
+            Data = a.Data.ToString("yyyy-MM-dd"),
+            Litros = a.Litros,
+            ValorTotal = a.ValorTotal,
+            HorimetroOdometro = a.HorimetroOdometro,
+            Observacao = a.Observacao,
+            LancamentoId = lancamentoId
+        };
+
+        private static string? ValidarAbastecimento(AbastecimentoRequest req, out DateTime data)
+        {
+            if (!TentarLerData(req.Data, out data))
+                return "Informe uma data válida para o abastecimento.";
+
+            if (req.Litros <= 0 || req.ValorTotal <= 0)
+                return "Informe litros e valor total.";
+
+            if (req.HorimetroOdometro.HasValue && req.HorimetroOdometro < 0)
+                return "O horímetro/odômetro não pode ser negativo.";
+
+            return null;
+        }
+
+        public async Task<AppResponse<List<AbastecimentoResponse>>> ListarAbastecimentosAsync(int veiculoId)
+        {
+            var lista = await _veiculoRepository.ListarAbastecimentosAsync(veiculoId);
+
+            return AppResponse<List<AbastecimentoResponse>>.Ok(
+                "Abastecimentos recuperados com sucesso.",
+                lista.Select(a => MapearAbastecimento(a)).ToList());
+        }
+
+        public async Task<AppResponse<AbastecimentoResponse>> CriarAbastecimentoAsync(AbastecimentoRequest req)
+        {
+            var veiculo = await _veiculoRepository.GetByIdAsync(req.VeiculoId);
+            if (veiculo == null)
+                return AppResponse<AbastecimentoResponse>.Fail("Veículo não encontrado.");
+
+            var erro = ValidarAbastecimento(req, out var data);
+            if (erro != null)
+                return AppResponse<AbastecimentoResponse>.Fail(erro, [erro]);
+
+            var item = new AbastecimentoVeiculo
+            {
+                VeiculoId = veiculo.Id,
+                Data = data,
+                Litros = req.Litros,
+                ValorTotal = Math.Round(req.ValorTotal, 2, MidpointRounding.AwayFromZero),
+                HorimetroOdometro = req.HorimetroOdometro,
+                Observacao = req.Observacao?.Trim()
+            };
+
+            var despesa = NovaDespesa(veiculo.PropriedadeId, $"Abastecimento - {veiculo.Nome}", item.ValorTotal, data);
+            var lancamentoId = await _veiculoRepository.InserirAbastecimentoAsync(item, despesa);
+
+            return AppResponse<AbastecimentoResponse>.Ok(
+                "Abastecimento registrado com sucesso.",
+                MapearAbastecimento(item, lancamentoId));
+        }
+
+        public async Task<AppResponse<AbastecimentoResponse>> AtualizarAbastecimentoAsync(int id, AbastecimentoRequest req)
+        {
+            var item = await _veiculoRepository.ObterAbastecimentoAsync(id);
+            if (item == null)
+                return AppResponse<AbastecimentoResponse>.Fail("Abastecimento não encontrado.");
+
+            var erro = ValidarAbastecimento(req, out var data);
+            if (erro != null)
+                return AppResponse<AbastecimentoResponse>.Fail(erro, [erro]);
+
+            item.Data = data;
+            item.Litros = req.Litros;
+            item.ValorTotal = Math.Round(req.ValorTotal, 2, MidpointRounding.AwayFromZero);
+            item.HorimetroOdometro = req.HorimetroOdometro;
+            item.Observacao = req.Observacao?.Trim();
+
+            var lancamentoId = await _veiculoRepository.AtualizarAbastecimentoAsync(
+                item, item.Veiculo.PropriedadeId, $"Abastecimento - {item.Veiculo.Nome}");
+
+            return AppResponse<AbastecimentoResponse>.Ok(
+                "Abastecimento atualizado com sucesso.",
+                MapearAbastecimento(item, lancamentoId));
+        }
+
+        public async Task<AppResponse<bool>> ExcluirAbastecimentoAsync(int id)
+        {
+            var item = await _veiculoRepository.ObterAbastecimentoAsync(id);
+            if (item == null)
+                return AppResponse<bool>.Fail("Abastecimento não encontrado.");
+
+            await _veiculoRepository.ExcluirAbastecimentoAsync(item);
+
+            return AppResponse<bool>.Ok("Abastecimento excluído com sucesso.", true);
+        }
+
+        // ---------- Manutenções ----------
+
+        private static ManutencaoResponse MapearManutencao(ManutencaoVeiculo m, int? lancamentoId = null) => new()
+        {
+            Id = m.Id,
+            VeiculoId = m.VeiculoId,
+            Data = m.Data.ToString("yyyy-MM-dd"),
+            Tipo = m.Tipo,
+            Descricao = m.Descricao,
+            Valor = m.Valor,
+            HorimetroOdometro = m.HorimetroOdometro,
+            Observacao = m.Observacao,
+            LancamentoId = lancamentoId
+        };
+
+        private static string? ValidarManutencao(ManutencaoRequest req, out DateTime data)
+        {
+            if (!TentarLerData(req.Data, out data))
+                return "Informe uma data válida para a manutenção.";
+
+            if (string.IsNullOrWhiteSpace(req.Tipo) || req.Valor <= 0)
+                return "Informe o tipo e o valor da manutenção.";
+
+            if (req.HorimetroOdometro.HasValue && req.HorimetroOdometro < 0)
+                return "O horímetro/odômetro não pode ser negativo.";
+
+            return null;
+        }
+
+        public async Task<AppResponse<List<ManutencaoResponse>>> ListarManutencoesAsync(int veiculoId)
+        {
+            var lista = await _veiculoRepository.ListarManutencoesAsync(veiculoId);
+
+            return AppResponse<List<ManutencaoResponse>>.Ok(
+                "Manutenções recuperadas com sucesso.",
+                lista.Select(m => MapearManutencao(m)).ToList());
+        }
+
+        public async Task<AppResponse<ManutencaoResponse>> CriarManutencaoAsync(ManutencaoRequest req)
+        {
+            var veiculo = await _veiculoRepository.GetByIdAsync(req.VeiculoId);
+            if (veiculo == null)
+                return AppResponse<ManutencaoResponse>.Fail("Veículo não encontrado.");
+
+            var erro = ValidarManutencao(req, out var data);
+            if (erro != null)
+                return AppResponse<ManutencaoResponse>.Fail(erro, [erro]);
+
+            var item = new ManutencaoVeiculo
+            {
+                VeiculoId = veiculo.Id,
+                Data = data,
+                Tipo = req.Tipo.Trim(),
+                Descricao = req.Descricao?.Trim(),
+                Valor = Math.Round(req.Valor, 2, MidpointRounding.AwayFromZero),
+                HorimetroOdometro = req.HorimetroOdometro,
+                Observacao = req.Observacao?.Trim()
+            };
+
+            var despesa = NovaDespesa(veiculo.PropriedadeId, $"Manutenção - {veiculo.Nome}", item.Valor, data);
+            var lancamentoId = await _veiculoRepository.InserirManutencaoAsync(item, despesa);
+
+            return AppResponse<ManutencaoResponse>.Ok(
+                "Manutenção registrada com sucesso.",
+                MapearManutencao(item, lancamentoId));
+        }
+
+        public async Task<AppResponse<ManutencaoResponse>> AtualizarManutencaoAsync(int id, ManutencaoRequest req)
+        {
+            var item = await _veiculoRepository.ObterManutencaoAsync(id);
+            if (item == null)
+                return AppResponse<ManutencaoResponse>.Fail("Manutenção não encontrada.");
+
+            var erro = ValidarManutencao(req, out var data);
+            if (erro != null)
+                return AppResponse<ManutencaoResponse>.Fail(erro, [erro]);
+
+            item.Data = data;
+            item.Tipo = req.Tipo.Trim();
+            item.Descricao = req.Descricao?.Trim();
+            item.Valor = Math.Round(req.Valor, 2, MidpointRounding.AwayFromZero);
+            item.HorimetroOdometro = req.HorimetroOdometro;
+            item.Observacao = req.Observacao?.Trim();
+
+            var lancamentoId = await _veiculoRepository.AtualizarManutencaoAsync(
+                item, item.Veiculo.PropriedadeId, $"Manutenção - {item.Veiculo.Nome}");
+
+            return AppResponse<ManutencaoResponse>.Ok(
+                "Manutenção atualizada com sucesso.",
+                MapearManutencao(item, lancamentoId));
+        }
+
+        public async Task<AppResponse<bool>> ExcluirManutencaoAsync(int id)
+        {
+            var item = await _veiculoRepository.ObterManutencaoAsync(id);
+            if (item == null)
+                return AppResponse<bool>.Fail("Manutenção não encontrada.");
+
+            await _veiculoRepository.ExcluirManutencaoAsync(item);
+
+            return AppResponse<bool>.Ok("Manutenção excluída com sucesso.", true);
+        }
+
+        // Despesa paga na data do registro, gerada pela API.
+        private static TransacaoFinanceira NovaDespesa(
+            int propriedadeId, string descricao, decimal valor, DateTime data) => new()
+        {
+            PropriedadeId = propriedadeId,
+            Descricao = descricao.Length > 200 ? descricao.Substring(0, 200) : descricao,
+            Valor = valor,
+            Tipo = TipoTransacao.Despesa,
+            Categoria = "Veículos",
+            Data = data,
+            DataVencimento = data,
+            DataPagamento = data,
+            Status = StatusTransacao.Pago
+        };
+
         private static VeiculoResponse MapearParaResponse(Veiculo v) => new()
         {
             Id = v.Id,
+            PropriedadeId = v.PropriedadeId,
+            Marca = v.Marca,
+            ValorVenda = v.ValorVenda,
+            DataVenda = v.DataVenda,
             Nome = v.Nome,
             PlacaOuChassi = v.PlacaOuChassi,
             Tipo = v.Tipo,
