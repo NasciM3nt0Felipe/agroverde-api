@@ -208,6 +208,29 @@ public class TransacaoFinanceiraService : ITransacaoFinanceiraService
         var data = (request.Data ?? request.DataVencimento ?? hoje).Date;
         var vencimento = (request.DataVencimento ?? request.Data ?? hoje).Date;
 
+        // A mesma folha (mesma descrição e data) não pode ser lançada duas
+        // vezes na propriedade, exceto se a anterior tiver sido cancelada.
+        if (origem == OrigemFinanceira.FolhaPagamento)
+        {
+            var descricao = request.Descricao.Trim();
+
+            var existentes = await _repository
+                .ListarPorPropriedadeIdAsync(request.PropriedadeId);
+
+            var jaLancada = existentes.Any(t =>
+                t.OrigemTipo == OrigemFinanceira.FolhaPagamento &&
+                t.Status != StatusTransacao.Cancelado &&
+                t.Data.Date == data &&
+                string.Equals(t.Descricao, descricao, StringComparison.Ordinal));
+
+            if (jaLancada)
+            {
+                const string mensagem =
+                    "A folha deste funcionário já foi lançada nesta data.";
+                return new(false, mensagem, null, [mensagem]);
+            }
+        }
+
         var transacao = new TransacaoFinanceira
         {
             PropriedadeId = request.PropriedadeId,
