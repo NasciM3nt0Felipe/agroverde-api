@@ -19,12 +19,16 @@ namespace AgroVerde.Infrastructure.Repositories
 
         public async Task<IEnumerable<Pessoa>> GetAllAsync()
         {
-            return await _context.Pessoas.AsNoTracking().ToListAsync();
+            // Linhas de perfil (UsuarioId preenchido) não aparecem nas listagens operacionais.
+            return await _context.Pessoas.AsNoTracking()
+                .Where(p => p.UsuarioId == null).ToListAsync();
         }
 
         public async Task<Pessoa?> GetByIdAsync(int id)
         {
-            return await _context.Pessoas.FindAsync(id);
+            // Perfis não são acessíveis por id pelos endpoints de Pessoa (somente por /api/Perfil).
+            return await _context.Pessoas
+                .FirstOrDefaultAsync(p => p.Id == id && p.UsuarioId == null);
         }
 
         public async Task<Pessoa?> ObterPorDocumentoAsync(string cpfCnpj)
@@ -41,12 +45,20 @@ namespace AgroVerde.Infrastructure.Repositories
 
         public async Task<IEnumerable<Pessoa>> ObterPorTipoAsync(TipoPessoa tipo)
         {
-            return await _context.Pessoas.AsNoTracking().Where(p => p.Tipo == tipo).ToListAsync();
+            return await _context.Pessoas.AsNoTracking()
+                .Where(p => p.Tipo == tipo && p.UsuarioId == null).ToListAsync();
         }
 
         public async Task<IEnumerable<Pessoa>> ObterAtivosAsync()
         {
-            return await _context.Pessoas.AsNoTracking().Where(p => p.Ativo).ToListAsync();
+            return await _context.Pessoas.AsNoTracking()
+                .Where(p => p.Ativo && p.UsuarioId == null).ToListAsync();
+        }
+
+        public async Task<Pessoa?> ObterPerfilPorUsuarioIdAsync(int usuarioId)
+        {
+            return await _context.Pessoas
+                .FirstOrDefaultAsync(p => p.UsuarioId == usuarioId);
         }
 
         public async Task AddAsync(Pessoa entity)

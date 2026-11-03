@@ -32,6 +32,15 @@ public class PropriedadeConfiguration : IEntityTypeConfiguration<Propriedade>
             .HasColumnName("localizacao")
             .IsRequired();
 
+        builder.Property(p => p.Cidade)
+            .HasColumnName("cidade");
+
+        builder.Property(p => p.Estado)
+            .HasColumnName("estado");
+
+        builder.Property(p => p.Descricao)
+            .HasColumnName("descricao");
+
         builder.Property(p => p.AreaTotal)
             .HasColumnName("area_total")
             .IsRequired();

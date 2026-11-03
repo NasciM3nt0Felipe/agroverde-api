@@ -64,7 +64,7 @@ public class PropriedadeController : ControllerBase
 
         if (!resultado.Success)
         {
-            return NotFound(resultado);
+            return RespostaDeFalha(resultado);
         }
 
         return Ok(resultado);
@@ -98,7 +98,7 @@ public class PropriedadeController : ControllerBase
 
         if (!resultado.Success)
         {
-            return NotFound(resultado);
+            return RespostaDeFalha(resultado);
         }
 
         InvalidarCache();
@@ -113,12 +113,24 @@ public class PropriedadeController : ControllerBase
 
         if (!resultado.Success)
         {
-            return NotFound(resultado);
+            return RespostaDeFalha(resultado);
         }
 
         InvalidarCache();
 
         return Ok(resultado);
+    }
+
+    // 404 só quando a propriedade não existe (ou é de outro usuário); demais falhas
+    // (validação, exclusão bloqueada por vínculos etc.) são 400.
+    private IActionResult RespostaDeFalha<T>(AppResponse<T> resultado)
+    {
+        if (resultado.Message == IPropriedadeService.MensagemNaoEncontrada)
+        {
+            return NotFound(resultado);
+        }
+
+        return BadRequest(resultado);
     }
 
     private void InvalidarCache()

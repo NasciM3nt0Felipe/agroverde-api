@@ -1,5 +1,7 @@
+using System.Security.Claims;
 using AgroVerde.Application.DTOs;
 using AgroVerde.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AgroVerde.API.Controllers;
@@ -36,6 +38,30 @@ public class AuthController : ControllerBase
         if (!resultado.Success)
         {
             return Unauthorized(resultado);
+        }
+
+        return Ok(resultado);
+    }
+
+    // PUT /api/Auth/senha  { senhaAtual, novaSenha }
+    // Exige JWT. O usuário vem SEMPRE do token. Falhas (inclusive senha atual
+    // incorreta) devolvem 400: um 401 aqui faria o app encerrar a sessão.
+    [Authorize]
+    [HttpPut("senha")]
+    public async Task<IActionResult> AlterarSenha([FromBody] AlterarSenhaRequest request)
+    {
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!int.TryParse(idClaim, out var usuarioId))
+        {
+            return Unauthorized();
+        }
+
+        var resultado = await _usuarioService.AlterarSenhaAsync(usuarioId, request);
+
+        if (!resultado.Success)
+        {
+            return BadRequest(resultado);
         }
 
         return Ok(resultado);

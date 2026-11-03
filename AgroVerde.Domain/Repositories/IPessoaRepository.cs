@@ -12,6 +12,8 @@ namespace AgroVerde.Domain.Repositories
         Task<Pessoa?> ObterPorEmailAsync(string email);
         Task<IEnumerable<Pessoa>> ObterPorTipoAsync(TipoPessoa tipo);
         Task<IEnumerable<Pessoa>> ObterAtivosAsync();
+        // Perfil do usuário: a linha de Pessoa vinculada ao UsuarioId (rastreada, para atualização).
+        Task<Pessoa?> ObterPerfilPorUsuarioIdAsync(int usuarioId);
         Task AddAsync(Pessoa entity);
         void Update(Pessoa entity);
         void Delete(Pessoa entity);

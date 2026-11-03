@@ -181,6 +181,119 @@ namespace AgroVerde.Application.Services
             return AppResponse<bool>.Ok("Pessoa removida com sucesso.", true);
         }
 
+        // ---------------------------------------------------------------
+        // Perfil do usuário autenticado
+        // ---------------------------------------------------------------
+
+        public async Task<AppResponse<PerfilResponse?>> ObterPerfilAsync(int usuarioId)
+        {
+            if (usuarioId <= 0)
+                return AppResponse<PerfilResponse?>.Fail("Usuário inválido.");
+
+            var perfil = await _pessoaRepository.ObterPerfilPorUsuarioIdAsync(usuarioId);
+
+            // Usuário sem perfil cadastrado é um estado normal: sucesso com data nula.
+            if (perfil == null)
+                return AppResponse<PerfilResponse?>.Ok("Perfil ainda não cadastrado.", null);
+
+            return AppResponse<PerfilResponse?>.Ok("Perfil recuperado com sucesso.", MapearPerfil(perfil));
+        }
+
+        public async Task<AppResponse<PerfilResponse>> SalvarPerfilAsync(int usuarioId, PerfilRequest req)
+        {
+            if (usuarioId <= 0)
+                return AppResponse<PerfilResponse>.Fail("Usuário inválido.");
+
+            var nome = req.Nome?.Trim() ?? string.Empty;
+
+            if (nome.Length == 0)
+                return AppResponse<PerfilResponse>.Fail("Informe o nome.");
+
+            // CPF: mesma regra do app (11 dígitos). Guardado só com dígitos em CpfCnpj.
+            string? cpf = null;
+            if (!string.IsNullOrWhiteSpace(req.Cpf))
+            {
+                cpf = Regex.Replace(req.Cpf, @"[^\d]", "");
+                if (cpf.Length != 11)
+                    return AppResponse<PerfilResponse>.Fail("CPF inválido. Informe 11 dígitos.");
+            }
+
+            // CEP: se informado, 8 dígitos (o formato digitado é preservado).
+            var cep = LimparOpcional(req.Cep);
+            if (cep != null && Regex.Replace(cep, @"[^\d]", "").Length != 8)
+                return AppResponse<PerfilResponse>.Fail("CEP inválido. Informe 8 dígitos.");
+
+            // CPF único: nenhum outro registro (perfil ou pessoa operacional) pode usá-lo.
+            if (cpf != null)
+            {
+                var doc = await _pessoaRepository.ObterPorDocumentoAsync(cpf);
+                if (doc != null && doc.UsuarioId != usuarioId)
+                    return AppResponse<PerfilResponse>.Fail("Este CPF já está cadastrado para outra pessoa.");
+            }
+
+            try
+            {
+                var perfil = await _pessoaRepository.ObterPerfilPorUsuarioIdAsync(usuarioId);
+                var novo = perfil == null;
+
+                if (novo)
+                {
+                    perfil = new Pessoa
+                    {
+                        UsuarioId = usuarioId,
+                        Tipo = TipoPessoa.Outro,
+                        Ativo = true,
+                        DataCadastro = DateTime.UtcNow
+                    };
+                }
+
+                perfil!.Nome = nome;
+                perfil.CpfCnpj = cpf;
+                perfil.Telefone = LimparOpcional(req.Telefone);
+                perfil.Cep = cep;
+                perfil.Rua = LimparOpcional(req.Rua);
+                perfil.Numero = LimparOpcional(req.Numero);
+                perfil.Bairro = LimparOpcional(req.Bairro);
+                perfil.Cidade = LimparOpcional(req.Cidade);
+                perfil.Estado = LimparOpcional(req.Estado);
+
+                if (novo)
+                    await _pessoaRepository.AddAsync(perfil);
+                else
+                    _pessoaRepository.Update(perfil);
+
+                await _pessoaRepository.SaveChangesAsync();
+
+                return AppResponse<PerfilResponse>.Ok(
+                    novo ? "Perfil criado com sucesso." : "Perfil atualizado com sucesso.",
+                    MapearPerfil(perfil));
+            }
+            catch (Exception ex)
+            {
+                // Inclui o caso raro de duas gravações simultâneas do mesmo usuário
+                // (o índice único impede um segundo perfil).
+                return AppResponse<PerfilResponse>.Fail("Erro ao salvar o perfil.", ex);
+            }
+        }
+
+        private static string? LimparOpcional(string? valor) =>
+            string.IsNullOrWhiteSpace(valor) ? null : valor.Trim();
+
+        private static PerfilResponse MapearPerfil(Pessoa p) => new()
+        {
+            Id = p.Id,
+            UsuarioId = p.UsuarioId ?? 0,
+            Nome = p.Nome,
+            Cpf = p.CpfCnpj,
+            Telefone = p.Telefone,
+            Cep = p.Cep,
+            Rua = p.Rua,
+            Numero = p.Numero,
+            Bairro = p.Bairro,
+            Cidade = p.Cidade,
+            Estado = p.Estado
+        };
+
         private static PessoaResponse MapearParaResponse(Pessoa p) => new()
         {
             Id = p.Id,

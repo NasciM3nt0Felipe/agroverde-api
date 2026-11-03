@@ -8,4 +8,6 @@ public interface IUsuarioService
     Task<AppResponse<UsuarioResponse>> RegistrarAsync(RegistrarUsuarioRequest request);
 
     Task<AppResponse<LoginResponse>> LoginAsync(LoginRequest request);
+
+    Task<AppResponse<bool>> AlterarSenhaAsync(int usuarioId, AlterarSenhaRequest request);
 }

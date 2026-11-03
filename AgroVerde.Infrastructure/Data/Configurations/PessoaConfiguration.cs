@@ -18,6 +18,17 @@ namespace AgroVerde.Infrastructure.Data.Configurations
             builder.Property(p => p.Observacoes).HasMaxLength(500);
 
             builder.HasIndex(p => p.CpfCnpj).IsUnique().HasFilter("[CpfCnpj] IS NOT NULL");
+
+            // Perfil do usuário
+            builder.Property(p => p.Cep).HasMaxLength(10);
+            builder.Property(p => p.Rua).HasMaxLength(150);
+            builder.Property(p => p.Numero).HasMaxLength(20);
+            builder.Property(p => p.Bairro).HasMaxLength(100);
+            builder.Property(p => p.Cidade).HasMaxLength(100);
+            builder.Property(p => p.Estado).HasMaxLength(50);
+
+            // No máximo um perfil por usuário (linhas operacionais, com UsuarioId nulo, ficam fora do índice).
+            builder.HasIndex(p => p.UsuarioId).IsUnique().HasFilter("[UsuarioId] IS NOT NULL");
         }
     }
 }

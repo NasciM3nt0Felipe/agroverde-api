@@ -112,6 +112,60 @@ public class UsuarioService : IUsuarioService
         }
     }
 
+    public async Task<AppResponse<bool>> AlterarSenhaAsync(
+        int usuarioId,
+        AlterarSenhaRequest request)
+    {
+        try
+        {
+            var usuario = await _usuarioRepository.BuscarPorIdAsync(usuarioId);
+
+            if (usuario == null)
+            {
+                return AppResponse<bool>.Fail(
+                    "Usuário não encontrado.",
+                    new List<string> { "Usuário não encontrado." }
+                );
+            }
+
+            // Senha atual conferida com o mesmo PBKDF2 usado no login.
+            if (string.IsNullOrEmpty(request.SenhaAtual)
+                || !SenhaHasher.Verificar(request.SenhaAtual, usuario.SenhaHash))
+            {
+                return AppResponse<bool>.Fail(
+                    "A senha atual está incorreta.",
+                    new List<string> { "A senha atual está incorreta." }
+                );
+            }
+
+            if (string.IsNullOrWhiteSpace(request.NovaSenha) || request.NovaSenha.Length < 6)
+            {
+                return AppResponse<bool>.Fail(
+                    "A nova senha deve ter pelo menos 6 caracteres.",
+                    new List<string> { "A nova senha deve ter pelo menos 6 caracteres." }
+                );
+            }
+
+            if (request.NovaSenha == request.SenhaAtual)
+            {
+                return AppResponse<bool>.Fail(
+                    "A nova senha deve ser diferente da senha atual.",
+                    new List<string> { "A nova senha deve ser diferente da senha atual." }
+                );
+            }
+
+            usuario.SenhaHash = SenhaHasher.Hash(request.NovaSenha);
+
+            await _usuarioRepository.AtualizarAsync(usuario);
+
+            return AppResponse<bool>.Ok("Senha alterada com sucesso.", true);
+        }
+        catch (Exception ex)
+        {
+            return AppResponse<bool>.Fail("Erro ao alterar a senha.", ex);
+        }
+    }
+
     private static UsuarioResponse ParaResponse(Usuario usuario)
     {
         return new UsuarioResponse

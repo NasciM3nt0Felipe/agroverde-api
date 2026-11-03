@@ -24,5 +24,17 @@ namespace AgroVerde.Domain.Entities
         public bool Ativo { get; set; } = true;
         public DateTime DataCadastro { get; set; } = DateTime.UtcNow;
         public string? Observacoes { get; set; }
+
+        // ---- Perfil do usuário (módulo Perfil do app) ----
+        // UsuarioId preenchido = esta linha é o PERFIL desse usuário (no máximo um por usuário).
+        // UsuarioId nulo = pessoa operacional (funcionário, fornecedor etc.), como sempre foi.
+        // O CPF do perfil fica em CpfCnpj. Sem chave estrangeira: o vínculo é garantido pela API.
+        public int? UsuarioId { get; set; }
+        public string? Cep { get; set; }
+        public string? Rua { get; set; }
+        public string? Numero { get; set; }
+        public string? Bairro { get; set; }
+        public string? Cidade { get; set; }
+        public string? Estado { get; set; }
     }
 }

@@ -7,11 +7,27 @@ namespace AgroVerde.Application.Services;
 
 public class PropriedadeService : IPropriedadeService
 {
-    private readonly IPropriedadeRepository _propriedadeRepository;
+    // Os talhões somados não podem passar de 90% da área total (10% de reserva técnica).
+    private const double PercentualAreaCultivavel = 0.90;
 
-    public PropriedadeService(IPropriedadeRepository propriedadeRepository)
+    private readonly IPropriedadeRepository _propriedadeRepository;
+    private readonly ITalhaoRepository _talhaoRepository;
+    private readonly IEstoqueRepository _estoqueRepository;
+    private readonly IAnimalRepository _animalRepository;
+    private readonly ITransacaoFinanceiraRepository _financeiroRepository;
+
+    public PropriedadeService(
+        IPropriedadeRepository propriedadeRepository,
+        ITalhaoRepository talhaoRepository,
+        IEstoqueRepository estoqueRepository,
+        IAnimalRepository animalRepository,
+        ITransacaoFinanceiraRepository financeiroRepository)
     {
         _propriedadeRepository = propriedadeRepository;
+        _talhaoRepository = talhaoRepository;
+        _estoqueRepository = estoqueRepository;
+        _animalRepository = animalRepository;
+        _financeiroRepository = financeiroRepository;
     }
 
     public async Task<AppResponse<PropriedadeResponse>> CriarAsync(
@@ -31,8 +47,11 @@ public class PropriedadeService : IPropriedadeService
             {
                 UsuarioId = usuarioId,
                 Nome = request.Nome.Trim(),
-                Localizacao = request.Localizacao.Trim(),
-                AreaTotal = request.AreaTotal
+                Localizacao = MontarLocalizacao(request),
+                AreaTotal = request.AreaTotal,
+                Cidade = LimparOpcional(request.Cidade),
+                Estado = LimparOpcional(request.Estado),
+                Descricao = LimparOpcional(request.Descricao)
             };
 
             var propriedadeCriada = await _propriedadeRepository.InserirAsync(propriedade);
@@ -87,7 +106,7 @@ public class PropriedadeService : IPropriedadeService
             if (propriedade == null || propriedade.UsuarioId != usuarioId)
             {
                 return AppResponse<PropriedadeResponse>.Fail(
-                    "Propriedade não encontrada."
+                    IPropriedadeService.MensagemNaoEncontrada
                 );
             }
 
@@ -117,7 +136,7 @@ public class PropriedadeService : IPropriedadeService
             if (propriedade == null || propriedade.UsuarioId != usuarioId)
             {
                 return AppResponse<PropriedadeResponse>.Fail(
-                    "Propriedade não encontrada."
+                    IPropriedadeService.MensagemNaoEncontrada
                 );
             }
 
@@ -128,12 +147,26 @@ public class PropriedadeService : IPropriedadeService
                 return AppResponse<PropriedadeResponse>.Fail(erro);
             }
 
-            // Atenção (módulo de Talhão): reduzir a AreaTotal aqui pode fazer a soma
-            // dos talhões passar de 90% da nova área. Essa checagem cruzada ainda
-            // não existe, pois Propriedade não conhece Talhão.
+            // Não permite reduzir a área abaixo do que os talhões já cadastrados exigem.
+            var talhoes = await _talhaoRepository.ListarPorPropriedadeIdAsync(id);
+            var areaTalhoes = talhoes.Sum(t => t.Area);
+            var areaMinima = areaTalhoes / PercentualAreaCultivavel;
+
+            if (areaTalhoes > 0 && request.AreaTotal < areaMinima - 1e-9)
+            {
+                return AppResponse<PropriedadeResponse>.Fail(
+                    "Área insuficiente. Os talhões cadastrados somam "
+                    + $"{FormatarArea(areaTalhoes)} ha e a propriedade mantém 10% como reserva técnica. "
+                    + $"Área total mínima: {FormatarArea(Math.Ceiling(areaMinima * 100) / 100)} ha."
+                );
+            }
+
             propriedade.Nome = request.Nome.Trim();
-            propriedade.Localizacao = request.Localizacao.Trim();
+            propriedade.Localizacao = MontarLocalizacao(request);
             propriedade.AreaTotal = request.AreaTotal;
+            propriedade.Cidade = LimparOpcional(request.Cidade);
+            propriedade.Estado = LimparOpcional(request.Estado);
+            propriedade.Descricao = LimparOpcional(request.Descricao);
 
             await _propriedadeRepository.AtualizarAsync(propriedade);
 
@@ -162,7 +195,30 @@ public class PropriedadeService : IPropriedadeService
             if (propriedade == null || propriedade.UsuarioId != usuarioId)
             {
                 return AppResponse<PropriedadeResponse>.Fail(
-                    "Propriedade não encontrada."
+                    IPropriedadeService.MensagemNaoEncontrada
+                );
+            }
+
+            // Sem exclusão em cascata: se houver registros vinculados, bloqueia.
+            // (Safras pertencem a talhões, então já ficam cobertas pelos talhões.)
+            var vinculos = new List<string>();
+
+            var qtdTalhoes = (await _talhaoRepository.ListarPorPropriedadeIdAsync(id)).Count;
+            var qtdEstoque = (await _estoqueRepository.ListarPorPropriedadeIdAsync(id)).Count;
+            var qtdAnimais = (await _animalRepository.ListarPorPropriedadeIdAsync(id)).Count();
+            var qtdLancamentos = (await _financeiroRepository.ListarPorPropriedadeIdAsync(id)).Count();
+
+            if (qtdTalhoes > 0) vinculos.Add($"{qtdTalhoes} talhão(ões)");
+            if (qtdEstoque > 0) vinculos.Add($"{qtdEstoque} item(ns) de estoque");
+            if (qtdAnimais > 0) vinculos.Add($"{qtdAnimais} animal(is)");
+            if (qtdLancamentos > 0) vinculos.Add($"{qtdLancamentos} lançamento(s) financeiro(s)");
+
+            if (vinculos.Count > 0)
+            {
+                return AppResponse<PropriedadeResponse>.Fail(
+                    $"Não é possível excluir a propriedade \"{propriedade.Nome}\" porque ela possui "
+                    + $"registros vinculados: {string.Join(", ", vinculos)}. "
+                    + "Remova esses registros antes de excluí-la."
                 );
             }
 
@@ -189,17 +245,45 @@ public class PropriedadeService : IPropriedadeService
             return "Informe o nome da propriedade.";
         }
 
-        if (string.IsNullOrWhiteSpace(request.Localizacao))
-        {
-            return "Informe a localização da propriedade.";
-        }
-
-        if (request.AreaTotal <= 0)
+        if (request.AreaTotal <= 0 || !double.IsFinite(request.AreaTotal))
         {
             return "Informe uma área total válida.";
         }
 
         return null;
+    }
+
+    // Localizacao é obrigatória no banco, mas o app envia cidade/estado. Se Localizacao
+    // não vier, monta "Cidade - Estado"; se nada vier, usa "Não informada".
+    private static string MontarLocalizacao(PropriedadeRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.Localizacao))
+        {
+            return request.Localizacao.Trim();
+        }
+
+        var partes = new[] { request.Cidade, request.Estado }
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p!.Trim());
+
+        var montada = string.Join(" - ", partes);
+
+        return string.IsNullOrWhiteSpace(montada) ? "Não informada" : montada;
+    }
+
+    private static string? LimparOpcional(string? valor) =>
+        string.IsNullOrWhiteSpace(valor) ? null : valor.Trim();
+
+    private static string FormatarArea(double valor)
+    {
+        if (valor % 1 == 0)
+        {
+            return valor.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return valor
+            .ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
+            .Replace('.', ',');
     }
 
     private static PropriedadeResponse ParaResponse(Propriedade propriedade)
@@ -211,6 +295,9 @@ public class PropriedadeService : IPropriedadeService
             Nome = propriedade.Nome,
             Localizacao = propriedade.Localizacao,
             AreaTotal = propriedade.AreaTotal,
+            Cidade = propriedade.Cidade,
+            Estado = propriedade.Estado,
+            Descricao = propriedade.Descricao,
             DataCriacao = propriedade.DataCriacao
         };
     }

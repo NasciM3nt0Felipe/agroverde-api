@@ -5,7 +5,14 @@ public class PropriedadeRequest
 {
     public string Nome { get; set; } = string.Empty;
 
+    // Opcional: se vier vazia, a API monta "Cidade - Estado" (ou "Não informada").
     public string Localizacao { get; set; } = string.Empty;
+
+    public string? Cidade { get; set; }
+
+    public string? Estado { get; set; }
+
+    public string? Descricao { get; set; }
 
     public double AreaTotal { get; set; }
 }

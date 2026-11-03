@@ -15,5 +15,9 @@ namespace AgroVerde.Application.Services
         Task<AppResponse<PessoaResponse>> AtualizarAsync(int id, PessoaRequest request);
         Task<AppResponse<bool>> AlterarStatusAsync(int id, bool ativo);
         Task<AppResponse<bool>> RemoverAsync(int id);
+
+        // Perfil do usuário autenticado (o id do usuário vem SEMPRE do token).
+        Task<AppResponse<PerfilResponse?>> ObterPerfilAsync(int usuarioId);
+        Task<AppResponse<PerfilResponse>> SalvarPerfilAsync(int usuarioId, PerfilRequest request);
     }
 }

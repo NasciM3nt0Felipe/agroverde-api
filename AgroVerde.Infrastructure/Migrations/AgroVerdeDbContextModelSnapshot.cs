@@ -222,7 +222,19 @@ namespace AgroVerde.Infrastructure.Migrations
                     b.Property<bool>("Ativo")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Bairro")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("CargoOuFuncao")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Cep")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Cidade")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
@@ -237,13 +249,25 @@ namespace AgroVerde.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Estado")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Nome")
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Numero")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Observacoes")
                         .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Rua")
+                        .HasMaxLength(150)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Telefone")
@@ -253,11 +277,18 @@ namespace AgroVerde.Infrastructure.Migrations
                     b.Property<int>("Tipo")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("UsuarioId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CpfCnpj")
                         .IsUnique()
                         .HasFilter("[CpfCnpj] IS NOT NULL");
+
+                    b.HasIndex("UsuarioId")
+                        .IsUnique()
+                        .HasFilter("[UsuarioId] IS NOT NULL");
 
                     b.ToTable("Pessoas", (string)null);
                 });
@@ -273,9 +304,21 @@ namespace AgroVerde.Infrastructure.Migrations
                         .HasColumnType("REAL")
                         .HasColumnName("area_total");
 
+                    b.Property<string>("Cidade")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("cidade");
+
                     b.Property<DateTime>("DataCriacao")
                         .HasColumnType("TEXT")
                         .HasColumnName("data_criacao");
+
+                    b.Property<string>("Descricao")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("descricao");
+
+                    b.Property<string>("Estado")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("estado");
 
                     b.Property<string>("Localizacao")
                         .IsRequired()
